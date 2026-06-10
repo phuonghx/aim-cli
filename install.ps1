@@ -1,16 +1,19 @@
 # AIM Installer for Windows PowerShell
-# Usage: iwr -useb https://raw.githubusercontent.com/<username>/aim-cli/master/install.ps1 | iex
+# Usage: iwr -useb https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== AIM (AI Memory/Mind) Installer for Windows ===" -ForegroundColor Cyan
 
-# 1. Detect Python
+# 1. Detect Python. On Windows, prefer "python" / "py -3" - "python3" is
+# usually the Microsoft Store alias stub that opens the Store instead.
 $pythonCmd = $null
-if (Get-Command "python3" -ErrorAction SilentlyContinue) {
-    $pythonCmd = "python3"
-} elseif (Get-Command "python" -ErrorAction SilentlyContinue) {
+if (Get-Command "python" -ErrorAction SilentlyContinue) {
     $pythonCmd = "python"
+} elseif (Get-Command "py" -ErrorAction SilentlyContinue) {
+    $pythonCmd = "py"
+} elseif (Get-Command "python3" -ErrorAction SilentlyContinue) {
+    $pythonCmd = "python3"
 } else {
     Write-Error "[-] Error: Python is required but not found in your PATH."
     Write-Host "Please install Python from https://www.python.org/ and check 'Add Python to PATH'." -ForegroundColor Yellow
@@ -33,7 +36,7 @@ if (-not $hasPip) {
 }
 
 # 3. Install AIM via pip from the Git repository
-$repoUrl = "git+https://github.com/hungluu-lingolab/yourclass-academy.git"
+$repoUrl = "git+https://github.com/phuonghx/aim-cli.git"
 
 Write-Host "[*] Installing AIM CLI from: $repoUrl ..." -ForegroundColor Yellow
 & $pythonCmd -m pip install --upgrade $repoUrl

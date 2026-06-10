@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=62.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+extend-exclude = ["aim/templates", ".ai-context"]
+
+[tool.ruff.lint]
+# Start with a high-signal gate: syntax-level errors, undefined names,
+# bare excepts, and unused imports. Widen over time.
+select = ["E7", "E9", "F"]
+ignore = ["E731", "E741"]
