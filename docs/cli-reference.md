@@ -41,6 +41,11 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
    * [`aim template list`](#aim-template-list)
    * [`aim template view`](#aim-template-view)
    * [`aim template run`](#aim-template-run)
+9. [AI Assistant Integration](#9-ai-assistant-integration)
+   * [`aim mcp`](#aim-mcp)
+   * [`aim browser`](#aim-browser)
+10. [Demo Workspace](#10-demo-workspace)
+   * [`aim demo`](#aim-demo)
 
 ---
 
@@ -55,7 +60,12 @@ Initialize AIM in the project root directory. Creates `.ai-context/` directory, 
   ```
 
 ### `aim sync`
-Compile and synchronize `.ai-context/config.json` into client-specific instruction files (`CLAUDE.md`, `ANTIGRAVITY.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`).
+Compile and synchronize `.ai-context/config.json` into client-specific instruction files:
+* `CLAUDE.md` (Claude Code), `AGENTS.md` (cross-tool convention), `GEMINI.md` (Gemini CLI/Code Assist), `ANTIGRAVITY.md` (Antigravity)
+* `.cursor/rules/aim.mdc` (Cursor's modern rules format), plus legacy `.cursorrules` / `.windsurfrules` for backwards compatibility
+* `.github/copilot-instructions.md` (GitHub Copilot)
+
+Generated content is written between `<!-- AIM:BEGIN -->` / `<!-- AIM:END -->` markers; anything you write outside the markers is preserved on every re-sync.
 * **Usage:** `aim sync`
 * **Example:**
   ```bash
@@ -349,4 +359,45 @@ Execute a template to generate source files. Prompts interactively for missing v
 * **Example:**
   ```bash
   aim template run react-component --dry-run -v name="CustomCard"
+  ```
+
+---
+
+## 9. AI Assistant Integration
+
+### `aim mcp`
+Run the AIM MCP (Model Context Protocol) server over stdio. AI assistants connected to it can query and mutate the workspace directly — no static file reads needed. Zero external dependencies (pure stdlib JSON-RPC).
+
+Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`.
+
+* **Usage:** `aim mcp` (intended to be launched by the MCP client, not by hand)
+* **Register in Claude Code:**
+  ```bash
+  claude mcp add aim -- aim mcp
+  ```
+* **Register in Cursor** (`.cursor/mcp.json`):
+  ```json
+  { "mcpServers": { "aim": { "command": "aim", "args": ["mcp"] } } }
+  ```
+
+### `aim browser`
+Launch the AIM Control Hub web dashboard (Kanban board, docs library, memory, time tracking, dependency graph) on a local-only server.
+* **Options:**
+  * `-p`, `--port`: Port to bind (default `6420`; auto-increments if busy).
+  * `--no-open`: Start the server without opening the browser automatically.
+* **Example:**
+  ```bash
+  aim browser -p 7000 --no-open
+  ```
+
+---
+
+## 10. Demo Workspace
+
+### `aim demo`
+Generate the interactive **AeroMap** demo workspace (users, docs, tasks with subtasks/labels, memories, time logs, and a code-generation template) so you can explore every AIM feature with realistic seed data. `aim generator demo` is an equivalent alias.
+* **Usage:** `aim demo`
+* **Example:**
+  ```bash
+  aim demo && aim board && aim browser
   ```

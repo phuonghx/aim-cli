@@ -35,17 +35,36 @@ aim-cli/
 
 ## 🚀 Installation & Initialization
 
-To initialize AIM in your workspace:
+### One-line install
 
-### On Windows
-Simply double-click the `setup.bat` file or run:
+**Windows (PowerShell):**
 ```powershell
-.\setup.bat
+iwr -useb https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.ps1 | iex
 ```
 
-This will also create:
-- `aim.bat`: Windows wrapper at the root, allowing you to run `aim <command>` directly.
-- `aim.sh`: Bash wrapper at the root for Unix-like shells.
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.sh | bash
+```
+
+**Or directly via pip:**
+```bash
+pip install git+https://github.com/phuonghx/aim-cli.git
+```
+
+Then initialize AIM in your project:
+```bash
+aim init          # set up .ai-context/, skills, and agent suite
+aim --version     # verify the installed version
+```
+
+Re-running `aim init` on an existing workspace will not overwrite your
+customized skills/agents — use `aim init --force` to reinstall (a timestamped
+`.bak` backup is kept).
+
+### From a repository checkout (development)
+Run via the included wrappers without installing:
+- `aim.bat` (Windows) / `aim.sh` (Unix-like shells) at the repo root.
 
 ---
 
@@ -58,11 +77,34 @@ aim sync
 # or: python aim/sync.py
 ```
 
+Generated content is written between `<!-- AIM:BEGIN -->` / `<!-- AIM:END -->` markers — anything you write outside the markers in these files is preserved on every re-sync (pre-existing files without markers are backed up to `.bak` once).
+
 This updates:
 * **Claude Code**: `CLAUDE.md` (project commands, style constraints, and active skills references).
+* **Cross-tool agents** (OpenAI Codex, Jules, etc.): `AGENTS.md` (the shared agent-instructions convention).
+* **Gemini CLI / Code Assist**: `GEMINI.md`.
 * **Antigravity**: `ANTIGRAVITY.md` (agent planning flow, Knowledge Items policy, validation).
-* **Codex (Cursor / Windsurf)**: `.cursorrules` & `.windsurfrules` (custom rules, UI design requirements).
+* **Cursor**: `.cursor/rules/aim.mdc` (modern project-rules format) plus legacy `.cursorrules`.
+* **Windsurf**: `.windsurfrules`.
 * **GitHub Copilot**: `.github/copilot-instructions.md` (metadata context).
+
+---
+
+## 🔌 MCP Server (Live AI Integration)
+
+Beyond static instruction files, AIM can serve the workspace live over the **Model Context Protocol**, so assistants query tasks/docs/memories directly:
+
+```bash
+# Claude Code
+claude mcp add aim -- aim mcp
+```
+
+```json
+// Cursor (.cursor/mcp.json)
+{ "mcpServers": { "aim": { "command": "aim", "args": ["mcp"] } } }
+```
+
+Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`. Zero external dependencies — pure stdlib JSON-RPC over stdio.
 
 ---
 
