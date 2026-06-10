@@ -614,6 +614,18 @@ HTML_CONTENT = """<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .kanban-col.drag-over {
+            background-color: rgba(99, 102, 241, 0.05);
+            border: 1px dashed rgba(99, 102, 241, 0.4);
+        }
+
+        .task-card.dragging {
+            opacity: 0.4;
+            border: 1px dashed var(--primary);
+            transform: scale(0.98);
         }
 
         .col-header {
@@ -1299,6 +1311,9 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <!-- 📋 KANBAN CONTENT -->
         <div id="tasksContent" class="tab-content">
+            <div style="display:flex; justify-content:flex-end; margin-bottom:1.25rem;">
+                <button class="btn btn-sync" onclick="openCreateTaskModal()">+ New Task</button>
+            </div>
             <div class="kanban-grid">
                 <div class="kanban-col" id="col-todo">
                     <div class="col-header">
@@ -1436,6 +1451,60 @@ HTML_CONTENT = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- CREATE TASK MODAL -->
+    <div class="modal-overlay" id="createTaskModalOverlay" onclick="closeCreateTaskModal(event)">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 style="margin:0; font-family:'Space Grotesk',sans-serif; font-weight:600;">Create New Task</h3>
+                <button class="modal-close" onclick="closeCreateTaskModal(null)">&times;</button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:1rem; padding:1.5rem;">
+                <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                    <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Title *</label>
+                    <input type="text" id="createTaskTitleInput" class="form-control" placeholder="e.g. Implement user dashboard styling" required style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; font-family:inherit; outline:none;">
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                    <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Description</label>
+                    <textarea id="createTaskDescInput" class="form-control" style="min-height:80px; font-family:inherit; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; outline:none; resize:vertical;" placeholder="Detailed description of the task..."></textarea>
+                </div>
+                <div style="display:flex; gap:1.5rem;">
+                    <div style="flex:1; display:flex; flex-direction:column; gap:0.35rem;">
+                        <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Status</label>
+                        <select id="createTaskStatusSelect" class="form-control" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; font-family:inherit; outline:none;">
+                            <option value="todo">Todo</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="in-review">In Review</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:0.35rem;">
+                        <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Priority</label>
+                        <select id="createTaskPrioritySelect" class="form-control" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; font-family:inherit; outline:none;">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex; gap:1.5rem;">
+                    <div style="flex:1; display:flex; flex-direction:column; gap:0.35rem;">
+                        <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Assignee</label>
+                        <select id="createTaskAssigneeSelect" class="form-control" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; font-family:inherit; outline:none;"></select>
+                    </div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:0.35rem;">
+                        <label style="font-weight:600; font-size:0.82rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Labels (comma separated)</label>
+                        <input type="text" id="createTaskLabelsInput" class="form-control" placeholder="e.g. bug, frontend" style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; padding:0.45rem 0.75rem; font-family:inherit; outline:none;">
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.75rem;">
+                    <button class="btn btn-secondary" onclick="closeCreateTaskModal(null)">Cancel</button>
+                    <button class="btn btn-sync" onclick="submitCreateTask()">Create Task</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- TASK DETAILS MODAL -->
     <div class="modal-overlay" id="taskModalOverlay" onclick="closeTaskModal(event)">
         <div class="modal" onclick="event.stopPropagation()" style="max-width: 750px; max-height: 90vh;">
@@ -1446,6 +1515,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <input type="text" id="modalTaskTitleInput" style="flex:1; background:none; border:none; border-bottom:1px solid transparent; color:#ffffff; font-size: 1.35rem; font-weight: 600; font-family: 'Space Grotesk', sans-serif; outline:none;" onchange="updateTaskTitle()" onfocus="this.style.borderBottomColor='var(--primary)'" onblur="this.style.borderBottomColor='transparent'">
                     </div>
                 </div>
+                <button class="btn btn-secondary btn-sm" onclick="deleteActiveTask()" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.35); color:#f87171; margin-right:1rem; padding:0.25rem 0.65rem; font-size:0.82rem;">Delete Task</button>
                 <button class="modal-close" onclick="closeTaskModal(null)">&times;</button>
             </div>
             <div class="modal-body" style="overflow-y: auto; padding-right: 0.5rem;">
@@ -1472,7 +1542,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div style="flex: 1; display:flex; flex-direction:column; gap:0.5rem;">
                         <h3 class="modal-section-title">Priority & Assignee</h3>
                         <div style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div>Priority: <span id="modalTaskPriorityBadge" class="task-priority">MEDIUM</span></div>
+                             <div style="display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                                <span>Priority:</span>
+                                <select id="modalTaskPrioritySelect" class="form-control" style="padding: 0.25rem 0.5rem; font-size: 0.82rem; background: rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; font-family:inherit; outline:none;" onchange="updateTaskPriority()">
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="urgent">Urgent</option>
+                                </select>
+                            </div>
                             <div style="display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted);">
                                 <span>Assignee:</span>
                                 <select id="modalTaskAssigneeSelect" class="form-control" style="padding: 0.25rem 0.5rem; font-size: 0.82rem; background: rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:#ffffff; font-family:inherit; outline:none;" onchange="updateTaskAssignee()"></select>
@@ -1845,6 +1923,17 @@ HTML_CONTENT = """<!DOCTYPE html>
                         opt.textContent = u;
                         select.appendChild(opt);
                     });
+                }
+                const createSelect = document.getElementById('createTaskAssigneeSelect');
+                if (createSelect) {
+                    createSelect.innerHTML = '';
+                    currentUsers.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u;
+                        opt.textContent = u;
+                        createSelect.appendChild(opt);
+                    });
+                    createSelect.value = 'unassigned';
                 }
             } catch (err) {
                 console.error("Failed to load users for dropdown:", err);
@@ -2433,7 +2522,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                 
                 const card = document.createElement('div');
                 card.className = 'task-card';
+                card.setAttribute('draggable', 'true');
                 card.onclick = () => openTaskModal(task.id);
+                card.ondragstart = (e) => {
+                    e.dataTransfer.setData('text/plain', task.id);
+                    card.classList.add('dragging');
+                };
+                card.ondragend = () => {
+                    card.classList.remove('dragging');
+                };
                 
                 const checkedCount = task.ac.filter(item => item.checked).length;
                 const progressPct = task.ac.length ? Math.round((checkedCount / task.ac.length) * 100) : 0;
@@ -2548,9 +2645,10 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('modalTaskSpecInput').value = task.spec || '';
             document.getElementById('modalTaskPlanInput').value = task.plan || '';
             
-            const priBadge = document.getElementById('modalTaskPriorityBadge');
-            priBadge.textContent = task.priority.toUpperCase();
-            priBadge.className = 'task-priority pri-' + task.priority.toLowerCase();
+            const priSelect = document.getElementById('modalTaskPrioritySelect');
+            if (priSelect) {
+                priSelect.value = (task.priority || 'medium').toLowerCase();
+            }
             
             await fetchUsersDropdownList();
             document.getElementById('modalTaskAssigneeSelect').value = task.assignee || 'unassigned';
@@ -2708,6 +2806,95 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
             } catch (err) {
                 console.error("Failed to save task edit:", err);
+            }
+        }
+
+        async function deleteActiveTask() {
+            if (!activeTaskId) return;
+            if (!confirm(`Are you sure you want to delete TASK-${activeTaskId}?`)) return;
+            try {
+                let res = await fetch('/api/tasks/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: activeTaskId })
+                });
+                if (res.ok) {
+                    closeTaskModal(null);
+                    await fetchTasks();
+                    await fetchStatus();
+                } else {
+                    const data = await res.json();
+                    alert("Error: " + (data.error || "Failed to delete task"));
+                }
+            } catch (err) {
+                console.error("Failed to delete task:", err);
+                alert("Failed to delete task.");
+            }
+        }
+
+        async function updateTaskPriority() {
+            if (!activeTaskId) return;
+            const pri = document.getElementById('modalTaskPrioritySelect').value;
+            await saveTaskEdit({ priority: pri });
+        }
+
+        function openCreateTaskModal() {
+            document.getElementById('createTaskTitleInput').value = '';
+            document.getElementById('createTaskDescInput').value = '';
+            document.getElementById('createTaskStatusSelect').value = 'todo';
+            document.getElementById('createTaskPrioritySelect').value = 'medium';
+            document.getElementById('createTaskLabelsInput').value = '';
+            
+            fetchUsersDropdownList();
+            document.getElementById('createTaskModalOverlay').style.display = 'flex';
+        }
+
+        function closeCreateTaskModal(e) {
+            const overlay = document.getElementById('createTaskModalOverlay');
+            if (overlay) {
+                if (e === null || e.target === overlay || e.target.classList.contains('modal-close') || e.target.textContent === 'Cancel') {
+                    overlay.style.display = 'none';
+                }
+            }
+        }
+
+        async function submitCreateTask() {
+            const title = document.getElementById('createTaskTitleInput').value.trim();
+            if (!title) {
+                alert("Task Title is required!");
+                return;
+            }
+            const desc = document.getElementById('createTaskDescInput').value.trim();
+            const status = document.getElementById('createTaskStatusSelect').value;
+            const priority = document.getElementById('createTaskPrioritySelect').value;
+            const assignee = document.getElementById('createTaskAssigneeSelect').value;
+            const labelsStr = document.getElementById('createTaskLabelsInput').value.trim();
+            const labels = labelsStr ? labelsStr.split(',').map(l => l.trim().toLowerCase()).filter(l => l) : [];
+
+            try {
+                let res = await fetch('/api/tasks/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title,
+                        description: desc,
+                        status,
+                        priority,
+                        assignee,
+                        labels
+                    })
+                });
+                if (res.ok) {
+                    document.getElementById('createTaskModalOverlay').style.display = 'none';
+                    await fetchTasks();
+                    await fetchStatus();
+                } else {
+                    const data = await res.json();
+                    alert("Error: " + (data.error || "Failed to create task"));
+                }
+            } catch (err) {
+                console.error("Failed to create task:", err);
+                alert("Failed to create task.");
             }
         }
 
@@ -2875,6 +3062,45 @@ HTML_CONTENT = """<!DOCTYPE html>
             await fetchStatus();
             // Pre-load tasks in background
             await fetchTasks();
+
+            // Set up Kanban Column drag & drop listeners
+            const cols = ['todo', 'in-progress', 'in-review', 'done'];
+            cols.forEach(col => {
+                const container = document.getElementById('col-' + col);
+                if (container) {
+                    container.ondragover = (e) => {
+                        e.preventDefault();
+                        container.classList.add('drag-over');
+                    };
+                    container.ondragleave = () => {
+                        container.classList.remove('drag-over');
+                    };
+                    container.ondrop = async (e) => {
+                        e.preventDefault();
+                        container.classList.remove('drag-over');
+                        const taskId = e.dataTransfer.getData('text/plain');
+                        if (taskId) {
+                            const task = currentTasks.find(t => t.id == taskId);
+                            if (task && task.status.toLowerCase() !== col) {
+                                // Optimistically update and render
+                                task.status = col;
+                                renderKanban();
+                                try {
+                                    await fetch('/api/tasks/edit', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ id: parseInt(taskId), status: col })
+                                    });
+                                    await fetchTasks();
+                                    await fetchStatus();
+                                } catch (err) {
+                                    console.error("Failed to update status via drag-drop:", err);
+                                }
+                            }
+                        }
+                    };
+                }
+            });
         };
     </script>
 </body>
@@ -3371,6 +3597,10 @@ class AIMBrowserHandler(http.server.BaseHTTPRequestHandler):
                 if "status" in payload:
                     meta["status"] = payload["status"]
                     
+                # Check if updating priority
+                if "priority" in payload:
+                    meta["priority"] = payload["priority"].strip().lower()
+                    
                 # Check if updating assignee
                 if "assignee" in payload:
                     assignee = payload["assignee"].strip().lower()
@@ -3409,7 +3639,72 @@ class AIMBrowserHandler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
 
-        # 1.5. Create Subtask
+        # 1.5. Create Task
+        elif self.path == "/api/tasks/create":
+            title = payload.get("title", "").strip()
+            if not title:
+                self.send_json({"error": "Missing title"}, 400)
+                return
+                
+            # Determine next ID
+            existing_ids = []
+            if os.path.exists(TASKS_DIR):
+                for filename in os.listdir(TASKS_DIR):
+                    m = re.match(r"task-(\d+)\.md", filename)
+                    if m:
+                        existing_ids.append(int(m.group(1)))
+            next_id = max(existing_ids) + 1 if existing_ids else 1
+            
+            meta = {
+                "id": next_id,
+                "title": title,
+                "status": payload.get("status", "todo"),
+                "priority": payload.get("priority", "medium"),
+                "assignee": payload.get("assignee", "unassigned"),
+                "parent": int(payload["parent"]) if payload.get("parent") else None,
+                "labels": payload.get("labels", []),
+                "spec": payload.get("spec", ""),
+                "plan": payload.get("plan", ""),
+                "description": payload.get("description", ""),
+                "ac": [{"index": i + 1, "checked": False, "text": ac} for i, ac in enumerate(payload.get("ac", []))]
+            }
+            try:
+                write_task_file(meta)
+                self.send_json({"success": True, "task": meta})
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+
+        # 1.6. Delete Task
+        elif self.path == "/api/tasks/delete":
+            task_id = payload.get("id")
+            if not task_id:
+                self.send_json({"error": "Missing task ID"}, 400)
+                return
+                
+            task_path = os.path.join(TASKS_DIR, f"task-{task_id}.md")
+            if not os.path.exists(task_path):
+                self.send_json({"error": "Task not found"}, 404)
+                return
+                
+            try:
+                os.remove(task_path)
+                # Orphan children tasks
+                if os.path.exists(TASKS_DIR):
+                    for filename in os.listdir(TASKS_DIR):
+                        if filename.startswith("task-") and filename.endswith(".md"):
+                            child_path = os.path.join(TASKS_DIR, filename)
+                            try:
+                                child_meta = parse_task_file(child_path)
+                                if child_meta.get("parent") == int(task_id):
+                                    child_meta["parent"] = None
+                                    write_task_file(child_meta)
+                            except:
+                                pass
+                self.send_json({"success": True})
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+
+        # 1.7. Create Subtask
         elif self.path == "/api/tasks/create_subtask":
             parent_id = payload.get("parent_id")
             title = payload.get("title", "").strip()
