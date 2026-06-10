@@ -6,23 +6,54 @@ import shutil
 import re
 import datetime
 import argparse
-import subprocess
+
+try:
+    from aim import __version__
+except ImportError:
+    __version__ = "unknown"
 
 # Determine directories
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
+
+def _core():
+    """Late import of the shared service layer (avoids a circular import
+    at module load: core resolves paths from this module at call time)."""
+    try:
+        from aim import core
+    except ImportError:
+        import core
+    return core
+
+
+def configure_utf8_output():
+    """Force UTF-8 stdout/stderr so piped output (the way AI agents invoke
+    this CLI) does not crash with UnicodeEncodeError on Windows."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 # Helper: Find project root dynamically
 def get_project_root():
     cwd = os.getcwd()
-    if "init" in sys.argv:
+    # `aim init` always initializes the current directory; only treat it as
+    # the subcommand when it is actually in the subcommand position.
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
         return cwd
-    if os.path.exists(os.path.join(cwd, ".ai-context")):
-        return cwd
-    parent = os.path.dirname(cwd)
-    if os.path.exists(os.path.join(parent, ".ai-context")):
-        return parent
-    return cwd
+    # Walk up the directory tree looking for an existing workspace.
+    current = cwd
+    while True:
+        if os.path.exists(os.path.join(current, ".ai-context")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return cwd
+        current = parent
 
 ROOT_DIR = get_project_root()
 AI_CONTEXT_DIR = os.path.join(ROOT_DIR, ".ai-context")
@@ -35,30 +66,49 @@ TIME_LOG_PATH = os.path.join(AI_CONTEXT_DIR, "time_log.json")
 USERS_PATH = os.path.join(AI_CONTEXT_DIR, "users.json")
 TEMPLATES_DIR = os.path.join(AI_CONTEXT_DIR, "templates")
 
-def load_users():
-    if not os.path.exists(USERS_PATH):
-        default_users = ["developer", "unassigned"]
+def load_json(path, default):
+    """Read a JSON store. A corrupt file is backed up (never silently
+    clobbered later by a save) and the default is returned."""
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        backup_path = f"{path}.corrupt-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
         try:
-            if not os.path.exists(AI_CONTEXT_DIR):
-                os.makedirs(AI_CONTEXT_DIR)
-            with open(USERS_PATH, "w", encoding="utf-8") as f:
-                json.dump(default_users, f, indent=2)
-        except:
+            shutil.copy2(path, backup_path)
+            print(f"[-] Warning: {os.path.basename(path)} is unreadable ({e}). "
+                  f"Backed it up to {os.path.basename(backup_path)} and continuing with defaults.")
+        except OSError:
+            print(f"[-] Warning: {os.path.basename(path)} is unreadable ({e}).")
+        return default
+
+def save_json(path, data):
+    """Atomically write a JSON store (temp file + os.replace) so a crash or
+    concurrent reader never observes a truncated file."""
+    parent = os.path.dirname(path)
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent)
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, path)
+
+def load_users():
+    default_users = ["developer", "unassigned"]
+    if not os.path.exists(USERS_PATH):
+        try:
+            save_json(USERS_PATH, default_users)
+        except OSError:
             pass
         return default_users
-    try:
-        with open(USERS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return ["developer", "unassigned"]
+    return load_json(USERS_PATH, default_users)
 
 def save_users(users):
     try:
-        if not os.path.exists(AI_CONTEXT_DIR):
-            os.makedirs(AI_CONTEXT_DIR)
-        with open(USERS_PATH, "w", encoding="utf-8") as f:
-            json.dump(users, f, indent=2)
-    except Exception as e:
+        save_json(USERS_PATH, users)
+    except OSError as e:
         print(f"[-] Error saving users: {e}")
 
 # Ensure base directories exist
@@ -102,7 +152,6 @@ def auto_detect_project(root_dir):
             try:
                 pkg = json.load(f)
                 deps = pkg.get("dependencies", {})
-                dev_deps = pkg.get("devDependencies", {})
                 if "next" in deps:
                     detected["techStack"].append("React/Next.js")
                     detected["commands"]["build"] = "next build"
@@ -110,7 +159,7 @@ def auto_detect_project(root_dir):
                     detected["techStack"].append("React")
                 elif "vue" in deps:
                     detected["techStack"].append("Vue.js")
-            except:
+            except Exception:
                 pass
                 
     # 2. Rust
@@ -174,29 +223,42 @@ def cmd_init(args):
             config_data["commands"] = detected["commands"]
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, indent=2)
-            print(f"[+] Created config.json based on auto-detection.")
+            print("[+] Created config.json based on auto-detection.")
         else:
             print("[-] Warning: config.json template not found.")
     else:
         print("[*] config.json already exists. Skipping recreation.")
         
+    force = bool(getattr(args, "force", False))
+
+    def install_tree(src_dir, dest_dir, label):
+        """Copy a template tree. Never silently destroys an existing
+        (possibly user-customized) install: requires --force, and even then
+        moves the old directory to a timestamped .bak first."""
+        if not os.path.exists(src_dir):
+            return False
+        if os.path.exists(dest_dir):
+            if not force:
+                print(f"[*] {label} already exists at {dest_dir}. "
+                      f"Use 'aim init --force' to reinstall (a .bak backup will be kept).")
+                return False
+            backup_dir = f"{dest_dir}.bak-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            shutil.move(dest_dir, backup_dir)
+            print(f"[*] Backed up existing {label} to: {backup_dir}")
+        shutil.copytree(src_dir, dest_dir)
+        print(f"[+] Installed {label} to: {dest_dir}")
+        return True
+
     # Copy skills
-    dest_skills_dir = os.path.join(AI_CONTEXT_DIR, "skills")
-    if os.path.exists(dest_skills_dir):
-        shutil.rmtree(dest_skills_dir)
-    src_skills_dir = os.path.join(SCRIPT_DIR, "skills")
-    if os.path.exists(src_skills_dir):
-        shutil.copytree(src_skills_dir, dest_skills_dir)
-        print(f"[+] Installed modular skills to: {dest_skills_dir}")
-        
+    install_tree(os.path.join(SCRIPT_DIR, "skills"),
+                 os.path.join(AI_CONTEXT_DIR, "skills"),
+                 "modular skills")
+
     # Copy AIM Specialist Agent Suite (agents, workflows, scripts, rules)
-    dest_ag_kit_dir = os.path.join(ROOT_DIR, ".aim-agents")
-    if os.path.exists(dest_ag_kit_dir):
-        shutil.rmtree(dest_ag_kit_dir)
     src_ag_kit = os.path.join(SCRIPT_DIR, "templates", "aim-agents")
     if os.path.exists(src_ag_kit):
-        shutil.copytree(src_ag_kit, dest_ag_kit_dir)
-        print(f"[+] Installed AIM Specialist Agent Suite to: {dest_ag_kit_dir}")
+        install_tree(src_ag_kit, os.path.join(ROOT_DIR, ".aim-agents"),
+                     "AIM Specialist Agent Suite")
     else:
         print("[-] Warning: AIM Agent templates not found in source directory.")
         
@@ -224,31 +286,52 @@ def cmd_sync(args):
         from sync import main as run_sync
     try:
         run_sync()
+    except SystemExit:
+        raise
     except Exception as e:
         print(f"[-] Sync failed: {e}")
+        sys.exit(1)
 
 # ==========================================
 # 3. TASK COMMANDS
 # ==========================================
+# Sections the task parser understands. Anything else found in a task file
+# is preserved verbatim through every edit (see extraSections below).
+_KNOWN_TASK_SECTIONS = ("description", "acceptance criteria", "notes")
+
+def _split_task_sections(content):
+    """Split a task file into (preamble, ordered list of (header, body))."""
+    parts = re.split(r"^## (.+)$", content, flags=re.MULTILINE)
+    preamble = parts[0]
+    sections = []
+    for i in range(1, len(parts), 2):
+        header = parts[i].strip()
+        body = parts[i + 1] if i + 1 < len(parts) else ""
+        sections.append((header, body.strip("\n")))
+    return preamble, sections
+
 def parse_task_file(path):
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
-    
+
     meta = {
-        "id": "", "title": "", "status": "todo", "priority": "medium", 
-        "assignee": "unassigned", "timeSpent": 0, 
+        "id": "", "title": "", "status": "todo", "priority": "medium",
+        "assignee": "unassigned", "timeSpent": 0,
         "parent": None, "labels": [], "spec": "", "plan": "",
-        "description": "", "ac": [], "notes": []
+        "description": "", "ac": [], "notes": "", "extraSections": []
     }
-    
+
     # Parse title
     title_match = re.search(r"^# Task (\d+):\s*(.+)$", content, re.MULTILINE)
-    if title_match:
-        meta["id"] = int(title_match.group(1))
-        meta["title"] = title_match.group(2).strip()
-        
-    # Parse front metadata
-    for line in content.split("\n"):
+    if not title_match:
+        raise ValueError(f"Not a valid task file (missing '# Task <id>:' header): {path}")
+    meta["id"] = int(title_match.group(1))
+    meta["title"] = title_match.group(2).strip()
+
+    preamble, sections = _split_task_sections(content)
+
+    # Parse front metadata (only the preamble, never section bodies)
+    for line in preamble.split("\n"):
         if line.startswith("**Status:**"):
             meta["status"] = line.replace("**Status:**", "").strip()
         elif line.startswith("**Priority:**"):
@@ -259,7 +342,7 @@ def parse_task_file(path):
             try:
                 t_str = line.replace("**Time Spent:**", "").replace("seconds", "").strip()
                 meta["timeSpent"] = int(t_str)
-            except:
+            except ValueError:
                 meta["timeSpent"] = 0
         elif line.startswith("**Parent Task:**"):
             val = line.replace("**Parent Task:**", "").strip()
@@ -273,37 +356,60 @@ def parse_task_file(path):
         elif line.startswith("**Plan:**"):
             val = line.replace("**Plan:**", "").strip()
             meta["plan"] = val if val and val != "none" else ""
-            
-    # Parse description
-    desc_section = re.search(r"## Description\n(.*?)\n##", content, re.DOTALL | re.MULTILINE)
-    if desc_section:
-        meta["description"] = desc_section.group(1).strip()
-        
-    # Parse ACs
-    ac_matches = re.findall(r"-\s*\[([ x/])\]\s*(.+)", content)
-    for index, (checked, ac_text) in enumerate(ac_matches):
-        meta["ac"].append({
-            "index": index + 1,
-            "checked": checked.strip() == "x",
-            "text": ac_text.strip()
-        })
-        
+
+    for header, body in sections:
+        key = header.strip().lower()
+        if key == "description":
+            meta["description"] = body.strip()
+        elif key == "acceptance criteria":
+            # Checkboxes are only harvested from this section, so checklists
+            # living in Description (or anywhere else) never migrate into ACs.
+            for index, (state, ac_text) in enumerate(re.findall(r"-\s*\[([ x/])\]\s*(.+)", body)):
+                meta["ac"].append({
+                    "index": index + 1,
+                    "checked": state == "x",
+                    "state": state,
+                    "text": ac_text.strip()
+                })
+        elif key == "notes":
+            meta["notes"] = body.strip()
+        else:
+            meta["extraSections"].append({"header": header, "body": body.strip()})
+
     return meta
 
-def write_task_file(meta):
+def render_task_content(meta):
     ac_lines = []
     for ac in meta["ac"]:
-        chk = "x" if ac["checked"] else " "
+        if ac.get("checked"):
+            chk = "x"
+        elif ac.get("state") == "/":
+            chk = "/"
+        else:
+            chk = " "
         ac_lines.append(f"- [{chk}] {ac['text']}")
-        
+
     ac_str = "\n".join(ac_lines)
     time_spent = meta.get("timeSpent", 0)
-    
+
     parent_str = f"**Parent Task:** {meta['parent']}" if meta.get("parent") else "**Parent Task:** none"
     labels_str = f"**Labels:** {', '.join(meta['labels'])}" if meta.get("labels") else "**Labels:** none"
     spec_str = f"**Spec:** {meta['spec']}" if meta.get("spec") else "**Spec:** none"
     plan_str = f"**Plan:** {meta['plan']}" if meta.get("plan") else "**Plan:** none"
-    
+
+    # Preserve user notes; only the "Last updated" stamp line is managed.
+    notes = meta.get("notes", "")
+    if isinstance(notes, list):  # tolerate legacy callers
+        notes = "\n".join(notes)
+    notes_lines = [l for l in notes.split("\n") if not l.strip().startswith("- Last updated:")]
+    notes_lines = [l for l in notes_lines if l.strip()]
+    notes_lines.append(f"- Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    notes_str = "\n".join(notes_lines)
+
+    extra_str = ""
+    for section in meta.get("extraSections", []):
+        extra_str += f"\n## {section['header']}\n{section['body']}\n"
+
     content = f"""# Task {meta['id']}: {meta['title']}
 
 **Status:** {meta['status']}
@@ -320,25 +426,71 @@ def write_task_file(meta):
 
 ## Acceptance Criteria
 {ac_str}
-
+{extra_str}
 ## Notes
-- Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{notes_str}
 """
-    path = os.path.join(TASKS_DIR, f"task-{meta['id']}.md")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    return content
 
-def cmd_task(args):
-    ensure_directories()
-    if args.task_action == "create":
-        # Determine next ID
-        existing_ids = []
+def write_task_file(meta):
+    """Atomically overwrite an existing task file."""
+    path = os.path.join(TASKS_DIR, f"task-{meta['id']}.md")
+    tmp_path = f"{path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(render_task_content(meta))
+    os.replace(tmp_path, path)
+
+def create_task_file(meta):
+    """Create a new task file with a race-safe ID: exclusive create, and on
+    collision (concurrent CLI/dashboard create) retry with the next ID."""
+    next_id = meta["id"]
+    for _ in range(1000):
+        path = os.path.join(TASKS_DIR, f"task-{next_id}.md")
+        meta["id"] = next_id
+        try:
+            with open(path, "x", encoding="utf-8") as f:
+                f.write(render_task_content(meta))
+            return next_id
+        except FileExistsError:
+            next_id += 1
+    raise RuntimeError("Could not allocate a free task ID after 1000 attempts.")
+
+def next_task_id():
+    existing_ids = []
+    if os.path.exists(TASKS_DIR):
         for filename in os.listdir(TASKS_DIR):
             m = re.match(r"task-(\d+)\.md", filename)
             if m:
                 existing_ids.append(int(m.group(1)))
-        next_id = max(existing_ids) + 1 if existing_ids else 1
-        
+    return max(existing_ids) + 1 if existing_ids else 1
+
+def detect_parent_cycle(task_id, new_parent_id):
+    """Return True if assigning new_parent_id to task_id would create a
+    self-parent or ancestor cycle (which makes tasks vanish from the tree)."""
+    if new_parent_id is None:
+        return False
+    if new_parent_id == task_id:
+        return True
+    seen = set()
+    current = new_parent_id
+    while current is not None and current not in seen:
+        seen.add(current)
+        path = os.path.join(TASKS_DIR, f"task-{current}.md")
+        if not os.path.exists(path):
+            return False
+        try:
+            current = parse_task_file(path).get("parent")
+        except (ValueError, OSError):
+            return False
+        if current == task_id:
+            return True
+    return current is not None  # pre-existing cycle among ancestors
+
+def cmd_task(args):
+    ensure_directories()
+    if args.task_action == "create":
+        next_id = next_task_id()
+
         assignee = args.assignee.strip().lower() if args.assignee else "unassigned"
         users = load_users()
         if assignee not in users:
@@ -350,7 +502,11 @@ def cmd_task(args):
         labels = args.label if hasattr(args, "label") and args.label else []
         spec = args.spec if hasattr(args, "spec") and args.spec else ""
         plan = args.plan if hasattr(args, "plan") and args.plan else ""
-        
+
+        if parent and not os.path.exists(os.path.join(TASKS_DIR, f"task-{parent}.md")):
+            print(f"[-] Error: parent task {parent} does not exist.")
+            sys.exit(1)
+
         meta = {
             "id": next_id,
             "title": args.title,
@@ -364,14 +520,13 @@ def cmd_task(args):
             "description": args.desc or "",
             "ac": [{"index": i+1, "checked": False, "text": ac} for i, ac in enumerate(args.ac or [])]
         }
-        write_task_file(meta)
+        next_id = create_task_file(meta)
         print(f"[+] Task created successfully: task-{next_id} (Title: {args.title})")
-        
+
     elif args.task_action == "list":
-        tasks = []
-        for filename in os.listdir(TASKS_DIR):
-            if filename.startswith("task-") and filename.endswith(".md"):
-                tasks.append(parse_task_file(os.path.join(TASKS_DIR, filename)))
+        tasks, parse_errors = _core().load_tasks()
+        for err in parse_errors:
+            print(f"[-] Warning: skipping malformed task file {err}")
         
         if not tasks:
             print("[*] No tasks found.")
@@ -431,7 +586,12 @@ def cmd_task(args):
                 save_users(users)
             meta["assignee"] = assignee
         if hasattr(args, "parent") and args.parent is not None:
-            meta["parent"] = args.parent if args.parent > 0 else None
+            new_parent = args.parent if args.parent > 0 else None
+            if detect_parent_cycle(meta["id"], new_parent):
+                print(f"[-] Error: setting parent {new_parent} would create a cycle "
+                      f"(task {meta['id']} would become its own ancestor).")
+                sys.exit(1)
+            meta["parent"] = new_parent
         if hasattr(args, "add_label") and args.add_label:
             if "labels" not in meta or not meta["labels"]:
                 meta["labels"] = []
@@ -475,6 +635,12 @@ def cmd_doc(args):
         filename = f"{slug}.md"
         doc_file_path = os.path.join(folder_path, filename)
         
+        if os.path.exists(doc_file_path):
+            rel_existing = os.path.relpath(doc_file_path, DOCS_DIR).replace("\\", "/")
+            print(f"[-] Error: a document already exists at @doc/{rel_existing}. "
+                  f"Choose a different title or folder.")
+            sys.exit(1)
+
         content = f"""# {args.title}
 
 **Description:** {args.desc or ""}
@@ -522,28 +688,14 @@ def cmd_doc(args):
 # ==========================================
 def cmd_memory(args):
     ensure_directories()
-    memories = []
-    if os.path.exists(MEMORIES_PATH):
-        with open(MEMORIES_PATH, "r", encoding="utf-8") as f:
-            try:
-                memories = json.load(f)
-            except:
-                pass
-                
+    core = _core()
+
     if args.mem_action == "add":
-        new_mem = {
-            "id": len(memories) + 1,
-            "content": args.content,
-            "category": args.category or "general",
-            "layer": args.layer or "project",
-            "createdAt": datetime.datetime.now().isoformat()
-        }
-        memories.append(new_mem)
-        with open(MEMORIES_PATH, "w", encoding="utf-8") as f:
-            json.dump(memories, f, indent=2)
+        new_mem, _memories = core.add_memory(args.content, args.category, args.layer)
         print(f"[+] Memory added successfully under category '{new_mem['category']}'.")
-        
+
     elif args.mem_action == "list":
+        memories = core.load_memories()
         if not memories:
             print("[*] No memories recorded.")
             return
@@ -559,52 +711,21 @@ def cmd_search(args):
     ensure_directories()
     query = args.query.lower()
     print(f"[*] Searching for '{query}' across tasks, docs, and memory...\n")
-    
-    results = []
-    
-    # 1. Search Tasks
-    for filename in os.listdir(TASKS_DIR):
-        if filename.endswith(".md"):
-            path = os.path.join(TASKS_DIR, filename)
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            if query in content.lower():
-                matches = re.findall(f"(?i).{{0,30}}{re.escape(query)}.{{0,30}}", content)
-                snippet = " | ".join(matches[:2])
-                results.append({"type": "task", "ref": f"@task-{filename.replace('task-', '').replace('.md', '')}", "snippet": snippet})
-                
-    # 2. Search Docs
-    for root, dirs, files in os.walk(DOCS_DIR):
-        for file in files:
-            if file.endswith(".md"):
-                path = os.path.join(root, file)
-                rel = os.path.relpath(path, DOCS_DIR).replace("\\", "/")
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                if query in content.lower():
-                    matches = re.findall(f"(?i).{{0,30}}{re.escape(query)}.{{0,30}}", content)
-                    snippet = " | ".join(matches[:2])
-                    results.append({"type": "doc", "ref": f"@doc/{rel}", "snippet": snippet})
-                    
-    # 3. Search Memory
-    if os.path.exists(MEMORIES_PATH):
-        with open(MEMORIES_PATH, "r", encoding="utf-8") as f:
-            try:
-                memories = json.load(f)
-                for mem in memories:
-                    if query in mem["content"].lower():
-                        results.append({"type": "memory", "ref": f"Memory #{mem['id']} ({mem['category']})", "snippet": mem["content"]})
-            except:
-                pass
-                
+
+    results = _core().search_workspace(query, context=30)
+
     if not results:
         print("[*] No matches found.")
         return
-        
+
     print(f"{'Type':<8} {'Reference':<30} {'Match Snippet'}")
     print("-" * 88)
     for r in results:
-        print(f"{r['type']:<8} {r['ref']:<30} {r['snippet']}")
+        if r["type"] == "memory":
+            ref = f"Memory #{r['id']} ({r['category']})"
+        else:
+            ref = r["ref"]
+        print(f"{r['type']:<8} {ref:<30} {r['snippet']}")
 
 # ==========================================
 # 7. VALIDATE REFERENCES COMMAND
@@ -612,63 +733,18 @@ def cmd_search(args):
 def cmd_validate(args):
     ensure_directories()
     print("[*] Validating project memory layer references...")
-    errors = 0
-    
-    # Get lists of tasks & docs
-    tasks = set()
-    for filename in os.listdir(TASKS_DIR):
-        m = re.match(r"task-(\d+)\.md", filename)
-        if m:
-            tasks.add(int(m.group(1)))
-            
-    docs = set()
-    for root, dirs, files in os.walk(DOCS_DIR):
-        for file in files:
-            if file.endswith(".md"):
-                rel = os.path.relpath(os.path.join(root, file), DOCS_DIR).replace("\\", "/")
-                docs.add(rel)
-                
-    # Function to check file contents
-    def check_references(content, file_desc):
-        nonlocal errors
-        # Check task mentions
-        task_refs = re.findall(r"@task-(\d+)", content)
-        for ref in task_refs:
-            if int(ref) not in tasks:
-                print(f"[-] Broken task link in {file_desc}: @task-{ref} does not exist.")
-                errors += 1
-        # Check doc mentions
-        doc_refs = re.findall(r"@doc/([\w\-/]+\.md|[\w\-/\s]+)", content)
-        for ref in doc_refs:
-            clean_ref = ref.strip()
-            if not clean_ref.endswith(".md"):
-                clean_ref += ".md"
-            if clean_ref not in docs:
-                print(f"[-] Broken doc link in {file_desc}: @doc/{ref} does not exist.")
-                errors += 1
 
-    # Validate Tasks
-    for filename in os.listdir(TASKS_DIR):
-        if filename.endswith(".md"):
-            path = os.path.join(TASKS_DIR, filename)
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            check_references(content, f"task file {filename}")
-            
-    # Validate Docs
-    for root, dirs, files in os.walk(DOCS_DIR):
-        for file in files:
-            if file.endswith(".md"):
-                path = os.path.join(root, file)
-                rel = os.path.relpath(path, DOCS_DIR).replace("\\", "/")
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                check_references(content, f"doc @doc/{rel}")
-                
-    if errors == 0:
+    errors = _core().validate_references()
+    for err in errors:
+        if err["kind"] == "task":
+            print(f"[-] Broken task link in {err['source']}: @task-{err['ref']} does not exist.")
+        else:
+            print(f"[-] Broken doc link in {err['source']}: @doc/{err['ref']} does not exist.")
+
+    if not errors:
         print("[+] All references are healthy!")
     else:
-        print(f"[-] Found {errors} broken reference link(s).")
+        print(f"[-] Found {len(errors)} broken reference link(s).")
         sys.exit(1)
 
 # ==========================================
@@ -686,18 +762,9 @@ def cmd_browser(args):
 # ==========================================
 def cmd_board(args):
     ensure_directories()
-    tasks = []
-    if os.path.exists(TASKS_DIR):
-        for filename in os.listdir(TASKS_DIR):
-            if filename.startswith("task-") and filename.endswith(".md"):
-                try:
-                    tasks.append(parse_task_file(os.path.join(TASKS_DIR, filename)))
-                except:
-                    pass
-    
-    tasks.sort(key=lambda x: x["id"])
-    
-    statuses = ["todo", "in-progress", "in-review", "done"]
+    tasks, _parse_errors = _core().load_tasks()
+
+    statuses = ["todo", "in-progress", "in-review", "blocked", "done"]
     columns = {s: [] for s in statuses}
     for t in tasks:
         status = t["status"].lower()
@@ -741,6 +808,7 @@ def cmd_board(args):
 # 10. TIME COMMAND
 # ==========================================
 def format_duration(seconds):
+    seconds = max(0, int(seconds))
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     secs = seconds % 60
@@ -768,38 +836,31 @@ def cmd_time(args):
             "title": task["title"],
             "startedAt": time.time()
         }
-        with open(TIMER_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(timer_state, f)
-            
+        save_json(TIMER_STATE_PATH, timer_state)
+
         print(f"[+] Timer started for task {task_id} ({task['title']})")
         
     elif args.time_action == "stop":
         if not os.path.exists(TIMER_STATE_PATH):
             print("[-] No active timer.")
             sys.exit(1)
-            
+
         with open(TIMER_STATE_PATH, "r", encoding="utf-8") as f:
             timer_state = json.load(f)
-            
+
         task_id = timer_state["taskId"]
-        duration = int(time.time() - timer_state["startedAt"])
-        
-        os.remove(TIMER_STATE_PATH)
-        
+        # Clamp so a backwards clock adjustment never produces negative time.
+        duration = max(0, int(time.time() - timer_state["startedAt"]))
+
+        # Persist results FIRST; only delete the timer state once the session
+        # has been recorded, so a failure cannot lose the tracked time.
         task_path = os.path.join(TASKS_DIR, f"task-{task_id}.md")
         if os.path.exists(task_path):
             task = parse_task_file(task_path)
             task["timeSpent"] = task.get("timeSpent", 0) + duration
             write_task_file(task)
-            
-        logs = []
-        if os.path.exists(TIME_LOG_PATH):
-            try:
-                with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
-                    logs = json.load(f)
-            except:
-                pass
-        
+
+        logs = load_json(TIME_LOG_PATH, [])
         entry = {
             "id": f"te-{int(time.time()*1000)}",
             "taskId": task_id,
@@ -809,9 +870,10 @@ def cmd_time(args):
             "note": args.note or ""
         }
         logs.append(entry)
-        with open(TIME_LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump(logs, f, indent=2)
-            
+        save_json(TIME_LOG_PATH, logs)
+
+        os.remove(TIMER_STATE_PATH)
+
         print(f"[+] Timer stopped for task {task_id}. Elapsed: {format_duration(duration)}")
         
     elif args.time_action == "status":
@@ -823,7 +885,7 @@ def cmd_time(args):
             timer_state = json.load(f)
             
         elapsed = int(time.time() - timer_state["startedAt"])
-        print(f"[*] Active Timer:")
+        print("[*] Active Timer:")
         print(f"  Task:      {timer_state['taskId']}")
         print(f"  Title:     {timer_state['title']}")
         print(f"  Elapsed:   {format_duration(elapsed)}")
@@ -925,21 +987,11 @@ def cmd_user(args):
         idx = users.index(old_username)
         users[idx] = new_username
         save_users(users)
-        
-        updated_tasks = 0
-        if os.path.exists(TASKS_DIR):
-            for filename in os.listdir(TASKS_DIR):
-                if filename.startswith("task-") and filename.endswith(".md"):
-                    path = os.path.join(TASKS_DIR, filename)
-                    try:
-                        meta = parse_task_file(path)
-                        if meta.get("assignee", "").strip().lower() == old_username:
-                            meta["assignee"] = new_username
-                            write_task_file(meta)
-                            updated_tasks += 1
-                    except Exception as e:
-                        print(f"[-] Error updating task {filename}: {e}")
-                        
+
+        updated_tasks, errors = _core().rename_user_propagate(old_username, new_username)
+        for err in errors:
+            print(f"[-] Error updating task {err}")
+
         print(f"[+] User '{old_username}' renamed to '{new_username}' successfully.")
         if updated_tasks > 0:
             print(f"[+] Propagated changes to {updated_tasks} task(s).")
@@ -949,118 +1001,38 @@ def cmd_user(args):
 # ==========================================
 def cmd_status(args):
     ensure_directories()
-    import time
-    
-    # 1. Project Info
-    project_name = "My Project"
-    tech_stack = []
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-                project_name = cfg.get("projectName", project_name)
-                tech_stack = cfg.get("techStack", [])
-        except:
-            pass
-            
-    # 2. Tasks Stats
-    tasks = []
-    if os.path.exists(TASKS_DIR):
-        for filename in os.listdir(TASKS_DIR):
-            if filename.startswith("task-") and filename.endswith(".md"):
-                try:
-                    t = parse_task_file(os.path.join(TASKS_DIR, filename))
-                    tasks.append(t)
-                except:
-                    pass
-                    
-    status_counts = {"todo": 0, "in-progress": 0, "in-review": 0, "done": 0}
-    for t in tasks:
-        st = t.get("status", "todo").lower()
-        if st in status_counts:
-            status_counts[st] += 1
-        else:
-            status_counts[st] = status_counts.get(st, 0) + 1
-            
-    status_breakdown = ", ".join([f"{k}: {v}" for k, v in status_counts.items()])
-    
-    # 3. Docs Count
-    doc_count = 0
-    if os.path.exists(DOCS_DIR):
-        for root, dirs, files in os.walk(DOCS_DIR):
-            for file in files:
-                if file.endswith(".md"):
-                    doc_count += 1
-                    
-    # 4. Memories Count
-    memories = []
-    if os.path.exists(MEMORIES_PATH):
-        try:
-            with open(MEMORIES_PATH, "r", encoding="utf-8") as f:
-                memories = json.load(f)
-        except:
-            pass
-    mem_count = len(memories)
-    
-    # 5. Time Tracked
-    total_duration = 0
-    if os.path.exists(TIME_LOG_PATH):
-        try:
-            with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-                total_duration = sum(l.get("duration", 0) for l in logs)
-        except:
-            pass
-            
+    status = _core().collect_status()
+
+    status_breakdown = ", ".join([f"{k}: {v}" for k, v in status["statusCounts"].items()])
+    tech_stack = status["techStack"]
+
     active_timer_str = "None"
-    if os.path.exists(TIMER_STATE_PATH):
-        try:
-            with open(TIMER_STATE_PATH, "r", encoding="utf-8") as f:
-                timer_state = json.load(f)
-                elapsed = int(time.time() - timer_state["startedAt"])
-                active_timer_str = f"Task {timer_state['taskId']} ({timer_state['title']}) - active for {format_duration(elapsed)}"
-        except:
-            pass
-            
-    # 6. Sync status
-    sync_files = {
-        "CLAUDE.md": "CLAUDE.md",
-        "ANTIGRAVITY.md": "ANTIGRAVITY.md",
-        ".cursorrules": ".cursorrules",
-        ".windsurfrules": ".windsurfrules",
-        "copilot-instructions.md": ".github/copilot-instructions.md"
-    }
-    
-    sync_statuses = {}
-    all_synced = True
-    for label, rel_path in sync_files.items():
-        full_p = os.path.join(ROOT_DIR, rel_path)
-        exists = os.path.exists(full_p)
-        sync_statuses[label] = "OK" if exists else "Missing"
-        if not exists:
-            all_synced = False
-            
+    if status["activeTimer"]:
+        timer = status["activeTimer"]
+        active_timer_str = (f"Task {timer['taskId']} ({timer['title']}) - "
+                            f"active for {format_duration(timer['elapsed'])}")
+
     # Print status report
     print("=========================================")
     print("         AIM Project Status Summary      ")
     print("=========================================")
-    print(f"Project Name:  {project_name}")
+    print(f"Project Name:  {status['projectName']}")
     print(f"Tech Stack:    {', '.join(tech_stack) if tech_stack else 'Not configured'}")
-    print(f"Workspace:     {ROOT_DIR}")
+    print(f"Workspace:     {status['projectRoot']}")
     print()
     print("Memory Layer Statistics:")
-    print(f"  Tasks:       {len(tasks)} total ({status_breakdown})")
-    print(f"  Docs:        {doc_count} files (@doc/)")
-    print(f"  Memories:    {mem_count} entries recorded")
+    print(f"  Tasks:       {len(status['tasks'])} total ({status_breakdown})")
+    print(f"  Docs:        {status['docsCount']} files (@doc/)")
+    print(f"  Memories:    {len(status['memories'])} entries recorded")
     print()
     print("Time Tracking:")
-    print(f"  Total Spent: {format_duration(total_duration)}")
+    print(f"  Total Spent: {format_duration(status['totalTimeSpent'])}")
     print(f"  Active:      {active_timer_str}")
     print()
     print("Agent Config Sync Status:")
-    for label, status in sync_statuses.items():
-        print(f"  {label:<30} [{status}]")
-    print(f"  Sync Health: {'Healthy & Synchronized' if all_synced else 'Out of sync / Run `aim sync` to update'}")
+    for label, sync_status in status["syncStatuses"].items():
+        print(f"  {label:<30} [{sync_status}]")
+    print(f"  Sync Health: {'Healthy & Synchronized' if status['allSynced'] else 'Out of sync / Run `aim sync` to update'}")
     print("=========================================")
 
 # ==========================================
@@ -1112,20 +1084,33 @@ def render_template_string(template_str, variables):
             
     return re.sub(r'\{\{\s*([^{}]+)\s*\}\}', replacer, template_str)
 
+def _strip_yaml_comment(line):
+    """Strip a trailing # comment, but only when the # is outside quotes and
+    preceded by whitespace (so values like 'color: #fff' survive)."""
+    in_single = in_double = False
+    for i, ch in enumerate(line):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            if i == 0 or line[i - 1] in " \t":
+                return line[:i]
+    return line
+
 def parse_yaml(content):
-    import re
     data = {}
     lines = content.splitlines()
     current_key = None
     current_list = None
-    
+
     for line in lines:
-        line_clean = re.sub(r'#.*$', '', line).rstrip()
+        line_clean = _strip_yaml_comment(line).rstrip()
         if not line_clean.strip():
             continue
-            
+
         indent = len(line) - len(line.lstrip())
-        
+
         # If it's a list item
         if line_clean.strip().startswith("-"):
             if current_list is not None:
@@ -1136,9 +1121,9 @@ def parse_yaml(content):
                     v = parts[1].strip()
                     if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
                         v = v[1:-1]
-                    if not current_list or not isinstance(current_list[-1], dict):
-                        current_list.append({})
-                    current_list[-1][k] = v
+                    # Every "- key: value" line starts a NEW list entry;
+                    # continuation lines (no leading dash) extend the last one.
+                    current_list.append({k: v})
                 else:
                     if (item_str.startswith('"') and item_str.endswith('"')) or (item_str.startswith("'") and item_str.endswith("'")):
                         item_str = item_str[1:-1]
@@ -1351,6 +1336,16 @@ messages:
                 print(render_template_string(success_msg_pattern, variables))
             else:
                 print(f"[+] Template '{name}' run successfully.")
+
+# ==========================================
+# 12.5. MCP SERVER COMMAND
+# ==========================================
+def cmd_mcp(args):
+    try:
+        from aim.mcp_server import run_stdio_server
+    except ImportError:
+        from mcp_server import run_stdio_server
+    run_stdio_server()
 
 # ==========================================
 # 13. DEMO GENERATOR COMMAND
@@ -1786,14 +1781,18 @@ export default {{pascalCase name}};
 # MAIN DISPATCHER
 # ==========================================
 def main():
+    configure_utf8_output()
     parser = argparse.ArgumentParser(
         description="AIM (AI Memory/Mind) CLI - Centralized Project Context & Memory Engine",
         prog="aim"
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    
+
     # init
-    subparsers.add_parser("init", help="Initialize AIM in the project root")
+    init_parser = subparsers.add_parser("init", help="Initialize AIM in the project root")
+    init_parser.add_argument("--force", action="store_true",
+                             help="Reinstall skills/agents even if they already exist (keeps a .bak backup)")
     
     # sync
     subparsers.add_parser("sync", help="Synchronize active config and compile shims")
@@ -1820,7 +1819,8 @@ def main():
     
     edit_task = task_sub.add_parser("edit", help="Edit a task's status or assignee")
     edit_task.add_argument("id", type=int, help="Task ID")
-    edit_task.add_argument("-s", "--status", help="Update status (todo/in-progress/in-review/done/blocked)")
+    edit_task.add_argument("-s", "--status", choices=["todo", "in-progress", "in-review", "blocked", "done"],
+                           help="Update status")
     edit_task.add_argument("-a", "--assignee", help="Assignee user")
     edit_task.add_argument("--add-ac", help="Add acceptance criteria item")
     edit_task.add_argument("--check-ac", type=int, help="Mark AC index as completed (1-based)")
@@ -1924,6 +1924,9 @@ def main():
     run_template.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     run_template.add_argument("-v", "--var", action="append", help="Template variable (key=value, repeatable)")
     
+    # mcp
+    subparsers.add_parser("mcp", help="Run the AIM MCP server over stdio (for Claude Code / Cursor integration)")
+
     # generator / demo
     generator_parser = subparsers.add_parser("generator", help="Generate demo workspaces and templates")
     generator_sub = generator_parser.add_subparsers(dest="generator_action", required=True)
@@ -1961,6 +1964,8 @@ def main():
         cmd_user(args)
     elif args.command == "template":
         cmd_template(args)
+    elif args.command == "mcp":
+        cmd_mcp(args)
     elif args.command == "generator":
         if args.generator_action == "demo":
             cmd_generator_demo(args)
