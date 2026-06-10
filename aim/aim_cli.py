@@ -1353,6 +1353,436 @@ messages:
                 print(f"[+] Template '{name}' run successfully.")
 
 # ==========================================
+# 13. DEMO GENERATOR COMMAND
+# ==========================================
+def cmd_generator_demo(args):
+    ensure_directories()
+    print("[*] Generating AeroMap Google Maps alternative demo workspace...")
+    
+    # 1. Users
+    demo_users = ["alice", "bob", "charlotte", "developer", "unassigned"]
+    save_users(demo_users)
+    print("  [+] Configured users.json")
+    
+    # 2. Docs
+    docs_to_create = {
+        "architecture/system-design.md": """# AeroMap: High-Level System Architecture 🗺️
+
+This document outlines the high-level architecture of **AeroMap**, an open-source, high-performance alternative to Google Maps. The project is designed with modular microservices to optimize data ingestion, map rendering, and routing calculation.
+
+---
+
+## 🏗️ Architecture Component Overview
+
+```mermaid
+graph TD
+    User([Web / Mobile Client]) --> CDN[Cloudflare CDN]
+    CDN --> WebApp[Frontend App: MapLibre GL JS / React]
+    WebApp -->|Tile Requests| TileServer[Tegola Vector Tile Server]
+    WebApp -->|Routing Requests| RoutingAPI[Valhalla API Service]
+    WebApp -->|Search / Geocode| Geocoder[Photon / Nominatim API]
+    
+    TileServer --> PostGIS[(PostgreSQL + PostGIS DB)]
+    RoutingAPI --> OSMData[OSM Graph Binary Files]
+    Geocoder --> NominatimDB[(Nominatim Database)]
+```
+
+### 1. Vector Tile Server (Tegola)
+We utilize **Tegola** to serve vector tiles (MVT format) dynamically computed from spatial datasets.
+- Tegola connects directly to our Postgres/PostGIS instance.
+- Map tiles are cached on CDN edges to reduce db queries.
+
+### 2. Frontend Map Rendering (MapLibre GL JS)
+Clients render map visuals dynamically using WebGL.
+- **Client library**: MapLibre GL JS (stable, high performance).
+- **Styling**: OpenMapTiles schema with tailored custom themes.
+
+### 3. Spatial Database (PostgreSQL + PostGIS)
+All spatial coordinates and geography details are stored here:
+- Coordinate system: EPSG:4326 (WGS 84).
+- Indexes: GIST spatial indexes on geometry columns.
+
+### 4. Routing Engine (Valhalla)
+Calculates path-finding, multi-modal routing, and navigation steps.
+- Compiles OpenStreetMap (OSM) data into custom routing graphs.
+- Supports offline mobile database integration.
+""",
+        "api/routing-api.md": """# AeroMap: Routing API Specification 🚗
+
+This document details the interface and specifications for the AeroMap pathfinding service.
+
+---
+
+## 🚀 Directions / Route Endpoint
+
+Calculates the optimal route between coordinates for various modes of transportation.
+
+- **URL:** `/api/v1/route`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json`
+
+### 1. Request Body Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `locations` | array | Yes | List of coordinate pairs `[lng, lat]`. Must contain at least 2 locations. |
+| `costing` | string | No | Mode of transport: `auto`, `bicycle`, `pedestrian`, `transit`. Default: `auto`. |
+| `language` | string | No | Language tag for navigation instructions. Default: `en-US`. |
+
+#### Example Payload:
+```json
+{
+  "locations": [
+    {"lon": 105.8544, "lat": 21.0285},
+    {"lon": 105.7801, "lat": 21.0381}
+  ],
+  "costing": "auto",
+  "language": "vi-VN"
+}
+```
+
+### 2. Response Structure
+
+Returns a JSON object representing the route path, duration, distance, and navigation maneuvers.
+
+#### Example Success Response (200 OK):
+```json
+{
+  "status": "success",
+  "trip": {
+    "summary": {
+      "time_seconds": 920.5,
+      "distance_km": 8.35
+    },
+    "legs": [
+      {
+        "maneuvers": [
+          {
+            "instruction": "Đi thẳng về hướng Tây trên phố Tràng Thi.",
+            "distance_meters": 450,
+            "time_seconds": 60
+          },
+          {
+            "instruction": "Rẽ phải vào Điện Biên Phủ.",
+            "distance_meters": 1200,
+            "time_seconds": 150
+          }
+        ],
+        "shape": "g~`hE_gse@sBmAcCiD..."
+      }
+    ]
+  }
+}
+```
+""",
+        "guides/offline-sync.md": """# AeroMap: Offline Tile Synchronization Guide 📶
+
+This guide outlines the synchronization mechanisms and local storage models to support offline map capabilities in AeroMap web and mobile applications.
+
+---
+
+## 💾 Local Storage Strategy
+
+Offline maps require caching vector tiles (Protobuf `.pbf` format) locally on the client.
+
+```
++-------------------------------------------------------------+
+|                     Client Map Engine                       |
++-------------------------------------------------------------+
+                               |
+               (Request Tile z/x/y)
+                               v
++-------------------------------------------------------------+
+|                  Service Worker / Cache                     |
++-------------------------------------------------------------+
+         |                                           |
+    (Cache hit)                                 (Cache miss)
+         v                                           v
++------------------+                       +------------------+
+|    IndexedDB     |                       |    Fetch URL     |
++------------------+                       +------------------+
+                                                     |
+                                                (Saves PBF)
+                                                     v
+                                           +------------------+
+                                           |    IndexedDB     |
+                                           +------------------+
+```
+
+### 1. Web Clients (IndexedDB)
+- **Library**: `localForage` or vanilla IndexedDB wrapper.
+- **Store Name**: `aeromap_tiles_cache`.
+- **Key Schema**: `style_id/z/x/y`.
+- **Value**: Binary ArrayBuffer of the vector tile PBF data, with a timestamp metadata attribute.
+
+### 2. Native Mobile Clients (SQLite)
+- For native Android/iOS clients, we packages MBTiles databases.
+- Tiles are queried using standard `SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?` statements.
+
+---
+
+## 🔄 Synchronization Pipeline
+
+1. **Pre-download Region**: User selects a bounding box (BBOX) on the map and chooses a maximum zoom level (up to z15).
+2. **Download Queue**: Client queue fetches tiles in batches of 10 concurrent requests.
+3. **Storage**: Each tile is saved with an expiration date (default: 30 days).
+4. **Purging**: When memory usage exceeds the browser quota, the application drops tiles based on a Least Recently Used (LRU) algorithm.
+"""
+    }
+    for rel_path, doc_content in docs_to_create.items():
+        full_path = os.path.join(DOCS_DIR, os.path.normpath(rel_path))
+        parent_dir = os.path.dirname(full_path)
+        if not os.path.exists(parent_dir):
+            os.makedirs(parent_dir)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(doc_content)
+        print(f"  [+] Created doc: @doc/{rel_path}")
+        
+    # 3. Tasks
+    tasks_to_create = {
+        "task-1.md": """# Task 1: Setup AeroMap High-Level System Architecture
+
+**Status:** done
+**Priority:** high
+**Assignee:** alice
+**Time Spent:** 3600 seconds
+**Parent Task:** none
+**Labels:** architecture, documentation
+**Spec:** @doc/architecture/system-design.md
+**Plan:** none
+
+## Description
+Research and document the system design, components, databases, and microservices needed for AeroMap.
+
+## Acceptance Criteria
+- [x] Draft high-level component diagrams using Mermaid
+- [x] Detail technical specifications for the Vector Tile Server
+- [x] Select client-side map rendering library (MapLibre GL JS)
+- [x] Document physical data model and database choices (PostGIS)
+
+## Notes
+- Last updated: 2026-06-10 16:40:00
+""",
+        "task-2.md": """# Task 2: Implement Vector Tile Rendering Engine
+
+**Status:** in-progress
+**Priority:** high
+**Assignee:** charlotte
+**Time Spent:** 1800 seconds
+**Parent Task:** 1
+**Labels:** frontend, map-rendering
+**Spec:** @doc/architecture/system-design.md
+**Plan:** none
+
+## Description
+Set up MapLibre GL JS / Leaflet on the client interface to request and render vector tiles from the Tegola server.
+
+## Acceptance Criteria
+- [x] Install MapLibre GL JS library
+- [ ] Render basic world map with OpenMapTiles style
+- [ ] Connect tiles source to Tegola mock endpoints
+- [ ] Add controls for zooming, panning, and toggling custom layer styles
+
+## Notes
+- Last updated: 2026-06-10 16:42:00
+""",
+        "task-3.md": """# Task 3: Develop Routing API Service
+
+**Status:** todo
+**Priority:** high
+**Assignee:** bob
+**Time Spent:** 0 seconds
+**Parent Task:** none
+**Labels:** backend, routing
+**Spec:** @doc/api/routing-api.md
+**Plan:** none
+
+## Description
+Deploy the Valhalla pathfinding engine in a Docker container and set up our API gateway to route requests to it.
+
+## Acceptance Criteria
+- [ ] Configure Valhalla Docker container with OSM data for Vietnam region
+- [ ] Implement proxy controller `/api/v1/route` that forwards payloads to Valhalla
+- [ ] Parse Valhalla JSON responses and return them in standard AeroMap routing format
+
+## Notes
+- Last updated: 2026-06-10 16:45:00
+""",
+        "task-4.md": """# Task 4: Optimize Route Search Algorithm
+
+**Status:** todo
+**Priority:** medium
+**Assignee:** bob
+**Time Spent:** 0 seconds
+**Parent Task:** 3
+**Labels:** backend, performance
+**Spec:** none
+**Plan:** none
+
+## Description
+Pre-compile contraction hierarchies for the OSM graph of the target region to reduce route calculation latency.
+
+## Acceptance Criteria
+- [ ] Write shell script to automate OSM data graph compilation
+- [ ] Measure routing calculation response times (must be under 50ms for typical city routes)
+- [ ] Enable multithreaded cost estimation queries in Valhalla config
+
+## Notes
+- Last updated: 2026-06-10 16:47:00
+""",
+        "task-5.md": """# Task 5: Implement Multi-Modal Routing (Transit & Walking)
+
+**Status:** todo
+**Priority:** medium
+**Assignee:** unassigned
+**Time Spent:** 0 seconds
+**Parent Task:** 3
+**Labels:** backend, routing
+**Spec:** @doc/api/routing-api.md
+**Plan:** none
+
+## Description
+Integrate public transit schedules (GTFS feeds) and pedestrian walking trails into the Valhalla graph compiler.
+
+## Acceptance Criteria
+- [ ] Import city GTFS feed into routing database
+- [ ] Implement query costing calculations for pedestrian paths and sidewalks
+- [ ] Allow combining walk-to-station, transit ride, and walk-to-destination paths in a single trip object
+
+## Notes
+- Last updated: 2026-06-10 16:50:00
+""",
+        "task-6.md": """# Task 6: Implement Offline Map Tile Caching
+
+**Status:** in-review
+**Priority:** medium
+**Assignee:** charlotte
+**Time Spent:** 2400 seconds
+**Parent Task:** none
+**Labels:** mobile, offline
+**Spec:** @doc/guides/offline-sync.md
+**Plan:** none
+
+## Description
+Develop a caching policy that allows offline vector map tiles request intercepts via service workers, storing tiles inside local IndexedDB.
+
+## Acceptance Criteria
+- [x] Configure service worker to intercept tile URLs (`/tile/{z}/{x}/{y}.pbf`)
+- [x] Integrate localForage for asynchronous IndexedDB caching
+- [x] Write LRU cache eviction policy for offline database storage
+- [ ] Implement UI indicators showing offline sync progress and bounding box selections
+
+## Notes
+- Last updated: 2026-06-10 16:53:00
+"""
+    }
+    for filename, task_content in tasks_to_create.items():
+        full_path = os.path.join(TASKS_DIR, filename)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(task_content)
+        print(f"  [+] Created task: {filename}")
+        
+    # 4. Memories
+    demo_memories = [
+      {
+        "id": 1,
+        "content": "Use MapLibre GL for client-side vector tile rendering due to styling flexibility and performance.",
+        "category": "decision",
+        "layer": "project",
+        "createdAt": datetime.datetime.now().isoformat()
+      },
+      {
+        "id": 2,
+        "content": "Store spatial coordinates in PostGIS (EPSG:4326) and index them using GIST indexes.",
+        "category": "convention",
+        "layer": "project",
+        "createdAt": datetime.datetime.now().isoformat()
+      },
+      {
+        "id": 3,
+        "content": "Cache Valhalla routing query responses in Redis using a 1-hour TTL.",
+        "category": "optimization",
+        "layer": "project",
+        "createdAt": datetime.datetime.now().isoformat()
+      }
+    ]
+    with open(MEMORIES_PATH, "w", encoding="utf-8") as f:
+        json.dump(demo_memories, f, indent=2)
+    print("  [+] Created memories.json")
+    
+    # 5. Templates
+    tpl_dir = os.path.join(TEMPLATES_DIR, "map-component")
+    if not os.path.exists(tpl_dir):
+        os.makedirs(tpl_dir)
+        
+    tpl_yaml = """name: map-component
+description: Generates a reusable React MapLibre Component
+version: 1.0.0
+destination: src
+prompts:
+  - name: name
+    type: text
+    message: Enter component name
+    validate: required
+actions:
+  - type: add
+    template: component.hbs
+    path: components/{{pascalCase name}}.tsx
+"""
+    with open(os.path.join(tpl_dir, "_template.yaml"), "w", encoding="utf-8") as f:
+        f.write(tpl_yaml)
+        
+    tpl_hbs = """import React, { useEffect, useRef } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
+interface {{pascalCase name}}Props {
+  center?: [number, number]; // [lng, lat]
+  zoom?: number;
+  styleUrl?: string;
+}
+
+export const {{pascalCase name}}: React.FC<{{pascalCase name}}Props> = ({
+  center = [105.8544, 21.0285], // default: Hanoi
+  zoom = 12,
+  styleUrl = 'https://tiles.basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+}) => {
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<maplibregl.Map | null>(null);
+
+  useEffect(() => {
+    if (map.current || !mapContainer.current) return;
+
+    map.current = new maplibregl.Map({
+      container: mapContainer.current,
+      style: styleUrl,
+      center: center,
+      zoom: zoom
+    });
+
+    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    return () => {
+      map.current?.remove();
+      map.current = null;
+    };
+  }, [center, zoom, styleUrl]);
+
+  return (
+    <div className="map-wrapper relative w-full h-full min-h-[400px]">
+      <div ref={mapContainer} className="absolute inset-0 w-full h-full rounded-lg shadow-lg" />
+    </div>
+  );
+};
+
+export default {{pascalCase name}};
+"""
+    with open(os.path.join(tpl_dir, "component.hbs"), "w", encoding="utf-8") as f:
+        f.write(tpl_hbs)
+    print("  [+] Created map-component template")
+    print("[+] AeroMap Google Maps demo workspace generated successfully.")
+
+# ==========================================
 # MAIN DISPATCHER
 # ==========================================
 def main():
@@ -1494,6 +1924,14 @@ def main():
     run_template.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     run_template.add_argument("-v", "--var", action="append", help="Template variable (key=value, repeatable)")
     
+    # generator / demo
+    generator_parser = subparsers.add_parser("generator", help="Generate demo workspaces and templates")
+    generator_sub = generator_parser.add_subparsers(dest="generator_action", required=True)
+    generator_sub.add_parser("demo", help="Generate the interactive AeroMap Google Maps demo workspace")
+    
+    # top-level demo command alias
+    subparsers.add_parser("demo", help="Generate the interactive AeroMap Google Maps demo workspace")
+    
     args = parser.parse_args()
     
     # Command Dispatcher
@@ -1523,6 +1961,11 @@ def main():
         cmd_user(args)
     elif args.command == "template":
         cmd_template(args)
+    elif args.command == "generator":
+        if args.generator_action == "demo":
+            cmd_generator_demo(args)
+    elif args.command == "demo":
+        cmd_generator_demo(args)
 
 if __name__ == "__main__":
     main()
