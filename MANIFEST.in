@@ -1,0 +1,2 @@
+recursive-include aim/templates *
+recursive-include aim/skills *

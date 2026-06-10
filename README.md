@@ -9,21 +9,25 @@ It compiles a single source-of-truth configuration file (`.ai-context/config.jso
 ## 🏗️ Folder Structure
 
 ```plaintext
-aim/
-├── templates/
-│   ├── config.json.template      # Baseline configuration skeleton
-│   ├── aim-agents/               # Full suite of AIM specialist agents, skills, and workflows
-│   └── commands/                 # Custom slash commands for Claude Code
-│       ├── commit.md             # Conventional commit messages helper
-│       ├── pr.md                 # Pull Request checks & description assembler
-│       ├── optimize.md           # Space/Time efficiency optimization
-│       ├── review.md             # Code quality and security checklist
-│       ├── test.md               # Unit test coverage expander
-│       └── docs.md               # Code comments & API documentation generator
-├── setup.py                      # Installer script (delegates to aim_cli.py init)
-├── setup.bat                     # Windows batch wrapper for quick installation
-├── sync.py                       # Standalone synchronizer script
-├── aim_cli.py                    # Core AIM CLI engine
+aim-cli/
+├── .github/
+│   └── workflows/
+│       └── release.yml           # GitHub Actions release pipeline
+├── aim/                          # Module directory
+│   ├── templates/                # Full suite of AIM specialist agents, skills, and workflows
+│   ├── skills/                   
+│   ├── __init__.py
+│   ├── aim_cli.py                # Core AIM CLI engine
+│   ├── browser_server.py         # Dashboard web server
+│   └── sync.py                   # Standalone synchronizer script
+├── .gitignore
+├── install.ps1                   # One-line installer for Windows PowerShell
+├── install.sh                    # One-line installer for macOS/Linux Bash
+├── MANIFEST.in                   # Packaging manifest file
+├── setup.py                      # Package installation config
+├── setup.bat                     # Windows batch installer helper
+├── aim.bat                       # Windows CLI wrapper (development)
+├── aim.sh                        # Bash CLI wrapper (development)
 └── README.md                     # This documentation
 ```
 
@@ -36,7 +40,7 @@ To initialize AIM in your workspace:
 ### On Windows
 Simply double-click the `setup.bat` file or run:
 ```powershell
-.\aim\setup.bat
+.\setup.bat
 ```
 
 This will also create:
@@ -64,22 +68,93 @@ This updates:
 
 ## 🛠️ CLI Reference
 
-### 1. Task & Workflow Management
-Manage project tasks and let your AI follow progress and check off acceptance criteria.
+### 1. Task & Subtask Hierarchy Management
+Manage project tasks, build parent-child subtask relationships, and categorize with labels.
 
 ```bash
-# Create a task
-aim task create "Title" -d "Description" --ac "AC 1" --ac "AC 2" -p high -a "user"
+# Create a task (supports parent ID, labels, spec, and plan)
+aim task create "Implement landing page SEO" -d "SEO optimization" --ac "Add tags" -p high -a "alice" --parent 1 -l bug -l seo --spec "@doc/sdd/seo.md"
 
-# List tasks
+# List tasks (prints an indented tree view showing subtasks and tags)
 aim task list
 
 # View task details
 aim task view <id>
 
-# Edit task status or complete acceptance criteria
-aim task edit <id> -s in-progress
+# Edit task properties, add/remove tags, set spec/plan paths
+aim task edit <id> -s in-progress --parent 2 --add-label frontend --remove-label bug -d "Updated description"
 aim task edit <id> --check-ac 1     # Check off AC index 1 (1-based)
+```
+
+### 1.5. User Database & Assignment (CRUD)
+Manage project team members and assign tasks.
+
+```bash
+# List all registered users
+aim user list
+
+# Register a new user
+aim user add <username>
+
+# Rename an existing user (automatically propagates assignee updates to all active tasks)
+aim user rename <old_username> <new_username>
+
+# Remove a user (system default users are protected)
+aim user remove <username>
+```
+
+### 1.6. Project Status & ASCII Kanban Board
+Check project health statistics and view your tasks in a lightweight ASCII Kanban board right inside the terminal.
+
+```bash
+# View project status summary (stats for tasks, docs, memories, time tracking, and sync health)
+aim status
+
+# Display the tasks arranged as an ASCII Kanban board (columns: TODO, IN-PROGRESS, IN-REVIEW, DONE)
+aim board
+```
+
+### 1.7. Task Time Tracking
+Track the exact time spent working on specific tasks directly from your CLI.
+
+```bash
+# Start timer for a task
+aim time start <task_id>
+
+# Check current active timer status
+aim time status
+
+# Stop active timer and optionally add a note
+aim time stop -n "Implemented feature X"
+
+# View time log entries for a specific task
+aim time log <task_id>
+
+# Generate a project time tracking report
+aim time report
+```
+
+### 1.8. Code Generation Templates
+Scaffold, view, and execute reusable code generation templates with dynamic variables and case-helpers:
+
+```bash
+# List all available templates
+aim template list
+
+# Create a new template scaffold (creates folder under .ai-context/templates/<name>/)
+aim template create <template_name>
+
+# View the configuration of a specific template
+aim template view <template_name>
+
+# Run a template (prompts for missing variables)
+aim template run <template_name>
+
+# Run with predefined variables
+aim template run <template_name> -v name="MyComponent"
+
+# Dry-run execution to preview output files without writing to disk
+aim template run <template_name> --dry-run -v name="MyComponent"
 ```
 
 ### 2. Structured Documentation

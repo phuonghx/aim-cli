@@ -6,7 +6,6 @@ setup(
     version="0.1.1",
     author="YourClass Academy",
     description="AIM (AI Memory/Mind) CLI - Centralized Project Context & Memory Engine",
-    package_dir={"aim": "."},
     packages=["aim"],
     include_package_data=True,
     package_data={

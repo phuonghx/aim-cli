@@ -30,6 +30,36 @@ TASKS_DIR = os.path.join(AI_CONTEXT_DIR, "tasks")
 DOCS_DIR = os.path.join(AI_CONTEXT_DIR, "docs")
 MEMORIES_PATH = os.path.join(AI_CONTEXT_DIR, "memories.json")
 CONFIG_PATH = os.path.join(AI_CONTEXT_DIR, "config.json")
+TIMER_STATE_PATH = os.path.join(AI_CONTEXT_DIR, "timer_state.json")
+TIME_LOG_PATH = os.path.join(AI_CONTEXT_DIR, "time_log.json")
+USERS_PATH = os.path.join(AI_CONTEXT_DIR, "users.json")
+TEMPLATES_DIR = os.path.join(AI_CONTEXT_DIR, "templates")
+
+def load_users():
+    if not os.path.exists(USERS_PATH):
+        default_users = ["developer", "unassigned"]
+        try:
+            if not os.path.exists(AI_CONTEXT_DIR):
+                os.makedirs(AI_CONTEXT_DIR)
+            with open(USERS_PATH, "w", encoding="utf-8") as f:
+                json.dump(default_users, f, indent=2)
+        except:
+            pass
+        return default_users
+    try:
+        with open(USERS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return ["developer", "unassigned"]
+
+def save_users(users):
+    try:
+        if not os.path.exists(AI_CONTEXT_DIR):
+            os.makedirs(AI_CONTEXT_DIR)
+        with open(USERS_PATH, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+    except Exception as e:
+        print(f"[-] Error saving users: {e}")
 
 # Ensure base directories exist
 def ensure_directories():
@@ -39,6 +69,9 @@ def ensure_directories():
         os.makedirs(TASKS_DIR)
     if not os.path.exists(DOCS_DIR):
         os.makedirs(DOCS_DIR)
+    if not os.path.exists(TEMPLATES_DIR):
+        os.makedirs(TEMPLATES_DIR)
+    load_users()
 
 def auto_detect_project(root_dir):
     detected = {
@@ -203,7 +236,9 @@ def parse_task_file(path):
     
     meta = {
         "id": "", "title": "", "status": "todo", "priority": "medium", 
-        "assignee": "unassigned", "description": "", "ac": [], "notes": []
+        "assignee": "unassigned", "timeSpent": 0, 
+        "parent": None, "labels": [], "spec": "", "plan": "",
+        "description": "", "ac": [], "notes": []
     }
     
     # Parse title
@@ -220,6 +255,24 @@ def parse_task_file(path):
             meta["priority"] = line.replace("**Priority:**", "").strip()
         elif line.startswith("**Assignee:**"):
             meta["assignee"] = line.replace("**Assignee:**", "").strip()
+        elif line.startswith("**Time Spent:**"):
+            try:
+                t_str = line.replace("**Time Spent:**", "").replace("seconds", "").strip()
+                meta["timeSpent"] = int(t_str)
+            except:
+                meta["timeSpent"] = 0
+        elif line.startswith("**Parent Task:**"):
+            val = line.replace("**Parent Task:**", "").strip()
+            meta["parent"] = int(val) if val.isdigit() else None
+        elif line.startswith("**Labels:**"):
+            val = line.replace("**Labels:**", "").strip()
+            meta["labels"] = [x.strip() for x in val.split(",")] if val and val != "none" else []
+        elif line.startswith("**Spec:**"):
+            val = line.replace("**Spec:**", "").strip()
+            meta["spec"] = val if val and val != "none" else ""
+        elif line.startswith("**Plan:**"):
+            val = line.replace("**Plan:**", "").strip()
+            meta["plan"] = val if val and val != "none" else ""
             
     # Parse description
     desc_section = re.search(r"## Description\n(.*?)\n##", content, re.DOTALL | re.MULTILINE)
@@ -244,12 +297,23 @@ def write_task_file(meta):
         ac_lines.append(f"- [{chk}] {ac['text']}")
         
     ac_str = "\n".join(ac_lines)
+    time_spent = meta.get("timeSpent", 0)
+    
+    parent_str = f"**Parent Task:** {meta['parent']}" if meta.get("parent") else "**Parent Task:** none"
+    labels_str = f"**Labels:** {', '.join(meta['labels'])}" if meta.get("labels") else "**Labels:** none"
+    spec_str = f"**Spec:** {meta['spec']}" if meta.get("spec") else "**Spec:** none"
+    plan_str = f"**Plan:** {meta['plan']}" if meta.get("plan") else "**Plan:** none"
     
     content = f"""# Task {meta['id']}: {meta['title']}
 
 **Status:** {meta['status']}
 **Priority:** {meta['priority']}
 **Assignee:** {meta['assignee']}
+**Time Spent:** {time_spent} seconds
+{parent_str}
+{labels_str}
+{spec_str}
+{plan_str}
 
 ## Description
 {meta['description']}
@@ -275,12 +339,28 @@ def cmd_task(args):
                 existing_ids.append(int(m.group(1)))
         next_id = max(existing_ids) + 1 if existing_ids else 1
         
+        assignee = args.assignee.strip().lower() if args.assignee else "unassigned"
+        users = load_users()
+        if assignee not in users:
+            print(f"[*] Registering new user '{assignee}' in the database...")
+            users.append(assignee)
+            save_users(users)
+            
+        parent = args.parent if hasattr(args, "parent") and args.parent else None
+        labels = args.label if hasattr(args, "label") and args.label else []
+        spec = args.spec if hasattr(args, "spec") and args.spec else ""
+        plan = args.plan if hasattr(args, "plan") and args.plan else ""
+        
         meta = {
             "id": next_id,
             "title": args.title,
             "status": "todo",
             "priority": args.priority or "medium",
-            "assignee": args.assignee or "unassigned",
+            "assignee": assignee,
+            "parent": parent,
+            "labels": labels,
+            "spec": spec,
+            "plan": plan,
             "description": args.desc or "",
             "ac": [{"index": i+1, "checked": False, "text": ac} for i, ac in enumerate(args.ac or [])]
         }
@@ -297,11 +377,32 @@ def cmd_task(args):
             print("[*] No tasks found.")
             return
             
-        tasks.sort(key=lambda x: x["id"])
+        # Build tree of tasks
+        task_dict = {t["id"]: t for t in tasks}
+        children = {t["id"]: [] for t in tasks}
+        root_tasks = []
+        
+        for t in tasks:
+            p_id = t.get("parent")
+            if p_id and p_id in task_dict:
+                children[p_id].append(t)
+            else:
+                root_tasks.append(t)
+                
         print(f"{'ID':<6} {'Title':<40} {'Status':<12} {'Priority':<10} {'Assignee':<15}")
         print("-" * 88)
-        for t in tasks:
-            print(f"{t['id']:<6} {t['title'][:38]:<40} {t['status']:<12} {t['priority']:<10} {t['assignee']:<15}")
+        
+        def print_task(t, indent=""):
+            title_text = indent + t['title']
+            if t.get("labels"):
+                labels_str = f" [{','.join(t['labels'])}]"
+                title_text += labels_str
+            print(f"{t['id']:<6} {title_text[:38]:<40} {t['status']:<12} {t['priority']:<10} {t['assignee']:<15}")
+            for child in children[t["id"]]:
+                print_task(child, indent + "  ")
+                
+        for t in root_tasks:
+            print_task(t)
             
     elif args.task_action == "view":
         path = os.path.join(TASKS_DIR, f"task-{args.id}.md")
@@ -319,13 +420,36 @@ def cmd_task(args):
             
         meta = parse_task_file(path)
         
-        if args.status:
+        if hasattr(args, "status") and args.status:
             meta["status"] = args.status
-        if args.assignee:
-            meta["assignee"] = args.assignee
-        if args.add_ac:
+        if hasattr(args, "assignee") and args.assignee:
+            assignee = args.assignee.strip().lower()
+            users = load_users()
+            if assignee not in users:
+                print(f"[*] Registering new user '{assignee}' in the database...")
+                users.append(assignee)
+                save_users(users)
+            meta["assignee"] = assignee
+        if hasattr(args, "parent") and args.parent is not None:
+            meta["parent"] = args.parent if args.parent > 0 else None
+        if hasattr(args, "add_label") and args.add_label:
+            if "labels" not in meta or not meta["labels"]:
+                meta["labels"] = []
+            if args.add_label not in meta["labels"]:
+                meta["labels"].append(args.add_label)
+        if hasattr(args, "remove_label") and args.remove_label:
+            if "labels" in meta and args.remove_label in meta["labels"]:
+                meta["labels"].remove(args.remove_label)
+        if hasattr(args, "spec") and args.spec is not None:
+            meta["spec"] = args.spec
+        if hasattr(args, "plan") and args.plan is not None:
+            meta["plan"] = args.plan
+        if hasattr(args, "desc") and args.desc is not None:
+            meta["description"] = args.desc
+            
+        if hasattr(args, "add_ac") and args.add_ac:
             meta["ac"].append({"index": len(meta["ac"]) + 1, "checked": False, "text": args.add_ac})
-        if args.check_ac is not None:
+        if hasattr(args, "check_ac") and args.check_ac is not None:
             ac_idx = args.check_ac - 1
             if 0 <= ac_idx < len(meta["ac"]):
                 meta["ac"][ac_idx]["checked"] = True
@@ -558,6 +682,677 @@ def cmd_browser(args):
     start_server(port=args.port, open_browser=not args.no_open)
 
 # ==========================================
+# 9. BOARD COMMAND
+# ==========================================
+def cmd_board(args):
+    ensure_directories()
+    tasks = []
+    if os.path.exists(TASKS_DIR):
+        for filename in os.listdir(TASKS_DIR):
+            if filename.startswith("task-") and filename.endswith(".md"):
+                try:
+                    tasks.append(parse_task_file(os.path.join(TASKS_DIR, filename)))
+                except:
+                    pass
+    
+    tasks.sort(key=lambda x: x["id"])
+    
+    statuses = ["todo", "in-progress", "in-review", "done"]
+    columns = {s: [] for s in statuses}
+    for t in tasks:
+        status = t["status"].lower()
+        if status in columns:
+            columns[status].append(t)
+        else:
+            columns["todo"].append(t)
+            
+    col_width = 30
+    
+    header_line = ""
+    for s in statuses:
+        label = f"{s.upper()} ({len(columns[s])})"
+        header_line += f"{label:<{col_width}}  "
+    print(header_line)
+    
+    sep_line = ""
+    for s in statuses:
+        sep_line += f"{'-'*col_width}  "
+    print(sep_line)
+    
+    max_rows = max(len(columns[s]) for s in statuses) if tasks else 0
+    
+    for row in range(max_rows):
+        row_line = ""
+        for s in statuses:
+            col = columns[s]
+            if row < len(col):
+                t = col[row]
+                card = f"[{t['id']}] {t['title']}"
+                if len(card) > col_width:
+                    card = card[:col_width-3] + "..."
+                row_line += f"{card:<{col_width}}  "
+            else:
+                row_line += f"{'':<{col_width}}  "
+        print(row_line)
+        
+    print(f"\nTotal: {len(tasks)} tasks across {len(statuses)} columns.")
+
+# ==========================================
+# 10. TIME COMMAND
+# ==========================================
+def format_duration(seconds):
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+def cmd_time(args):
+    import time
+    ensure_directories()
+    
+    if args.time_action == "start":
+        task_id = args.id
+        task_path = os.path.join(TASKS_DIR, f"task-{task_id}.md")
+        if not os.path.exists(task_path):
+            print(f"[-] Task-{task_id} not found.")
+            sys.exit(1)
+            
+        task = parse_task_file(task_path)
+        
+        timer_state = {
+            "taskId": task_id,
+            "title": task["title"],
+            "startedAt": time.time()
+        }
+        with open(TIMER_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(timer_state, f)
+            
+        print(f"[+] Timer started for task {task_id} ({task['title']})")
+        
+    elif args.time_action == "stop":
+        if not os.path.exists(TIMER_STATE_PATH):
+            print("[-] No active timer.")
+            sys.exit(1)
+            
+        with open(TIMER_STATE_PATH, "r", encoding="utf-8") as f:
+            timer_state = json.load(f)
+            
+        task_id = timer_state["taskId"]
+        duration = int(time.time() - timer_state["startedAt"])
+        
+        os.remove(TIMER_STATE_PATH)
+        
+        task_path = os.path.join(TASKS_DIR, f"task-{task_id}.md")
+        if os.path.exists(task_path):
+            task = parse_task_file(task_path)
+            task["timeSpent"] = task.get("timeSpent", 0) + duration
+            write_task_file(task)
+            
+        logs = []
+        if os.path.exists(TIME_LOG_PATH):
+            try:
+                with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
+                    logs = json.load(f)
+            except:
+                pass
+        
+        entry = {
+            "id": f"te-{int(time.time()*1000)}",
+            "taskId": task_id,
+            "startedAt": datetime.datetime.fromtimestamp(timer_state["startedAt"]).isoformat(),
+            "endedAt": datetime.datetime.now().isoformat(),
+            "duration": duration,
+            "note": args.note or ""
+        }
+        logs.append(entry)
+        with open(TIME_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(logs, f, indent=2)
+            
+        print(f"[+] Timer stopped for task {task_id}. Elapsed: {format_duration(duration)}")
+        
+    elif args.time_action == "status":
+        if not os.path.exists(TIMER_STATE_PATH):
+            print("[*] No active timer.")
+            return
+            
+        with open(TIMER_STATE_PATH, "r", encoding="utf-8") as f:
+            timer_state = json.load(f)
+            
+        elapsed = int(time.time() - timer_state["startedAt"])
+        print(f"[*] Active Timer:")
+        print(f"  Task:      {timer_state['taskId']}")
+        print(f"  Title:     {timer_state['title']}")
+        print(f"  Elapsed:   {format_duration(elapsed)}")
+        
+    elif args.time_action == "log":
+        task_id = args.id
+        if not os.path.exists(TIME_LOG_PATH):
+            print("[*] No time logs found.")
+            return
+            
+        with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+            
+        task_logs = [l for l in logs if l["taskId"] == task_id]
+        if not task_logs:
+            print(f"[*] No time logs found for task {task_id}.")
+            return
+            
+        total_secs = sum(l["duration"] for l in task_logs)
+        print(f"Time Log for Task {task_id} (Total: {format_duration(total_secs)}):")
+        print("-" * 65)
+        for l in task_logs:
+            print(f"  Started: {l['startedAt']} | Duration: {format_duration(l['duration'])} | Note: {l['note']}")
+            
+    elif args.time_action == "report":
+        if not os.path.exists(TIME_LOG_PATH):
+            print("[*] No time logs found.")
+            return
+            
+        with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+            
+        totals = {}
+        for l in logs:
+            tid = l["taskId"]
+            totals[tid] = totals.get(tid, 0) + l["duration"]
+            
+        print("Time spent per task:")
+        print("-" * 40)
+        for tid, secs in totals.items():
+            print(f"  Task {tid:<5}: {format_duration(secs)}")
+
+# ==========================================
+# 10.5. USER MANAGEMENT COMMAND
+# ==========================================
+def cmd_user(args):
+    ensure_directories()
+    users = load_users()
+    
+    if args.user_action == "list":
+        if not users:
+            print("[*] No users found.")
+            return
+        print("Project Users:")
+        print("-" * 25)
+        for u in users:
+            print(f"  - {u}")
+            
+    elif args.user_action == "add":
+        username = args.username.strip().lower()
+        if not username:
+            print("[-] Invalid username.")
+            sys.exit(1)
+        if username in users:
+            print(f"[-] User '{username}' already exists.")
+            sys.exit(1)
+        users.append(username)
+        save_users(users)
+        print(f"[+] User '{username}' added successfully.")
+        
+    elif args.user_action == "remove":
+        username = args.username.strip().lower()
+        if username not in users:
+            print(f"[-] User '{username}' not found.")
+            sys.exit(1)
+        if username in ["developer", "unassigned"]:
+            print(f"[-] Cannot remove default user '{username}'.")
+            sys.exit(1)
+        users.remove(username)
+        save_users(users)
+        print(f"[+] User '{username}' removed successfully.")
+
+    elif args.user_action == "rename":
+        old_username = args.old_username.strip().lower()
+        new_username = args.new_username.strip().lower()
+        if not old_username or not new_username:
+            print("[-] Invalid username.")
+            sys.exit(1)
+        if old_username not in users:
+            print(f"[-] User '{old_username}' not found.")
+            sys.exit(1)
+        if old_username in ["developer", "unassigned"]:
+            print(f"[-] Cannot rename default user '{old_username}'.")
+            sys.exit(1)
+        if new_username in users:
+            print(f"[-] User '{new_username}' already exists.")
+            sys.exit(1)
+        
+        idx = users.index(old_username)
+        users[idx] = new_username
+        save_users(users)
+        
+        updated_tasks = 0
+        if os.path.exists(TASKS_DIR):
+            for filename in os.listdir(TASKS_DIR):
+                if filename.startswith("task-") and filename.endswith(".md"):
+                    path = os.path.join(TASKS_DIR, filename)
+                    try:
+                        meta = parse_task_file(path)
+                        if meta.get("assignee", "").strip().lower() == old_username:
+                            meta["assignee"] = new_username
+                            write_task_file(meta)
+                            updated_tasks += 1
+                    except Exception as e:
+                        print(f"[-] Error updating task {filename}: {e}")
+                        
+        print(f"[+] User '{old_username}' renamed to '{new_username}' successfully.")
+        if updated_tasks > 0:
+            print(f"[+] Propagated changes to {updated_tasks} task(s).")
+
+# ==========================================
+# 11. STATUS COMMAND
+# ==========================================
+def cmd_status(args):
+    ensure_directories()
+    import time
+    
+    # 1. Project Info
+    project_name = "My Project"
+    tech_stack = []
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                project_name = cfg.get("projectName", project_name)
+                tech_stack = cfg.get("techStack", [])
+        except:
+            pass
+            
+    # 2. Tasks Stats
+    tasks = []
+    if os.path.exists(TASKS_DIR):
+        for filename in os.listdir(TASKS_DIR):
+            if filename.startswith("task-") and filename.endswith(".md"):
+                try:
+                    t = parse_task_file(os.path.join(TASKS_DIR, filename))
+                    tasks.append(t)
+                except:
+                    pass
+                    
+    status_counts = {"todo": 0, "in-progress": 0, "in-review": 0, "done": 0}
+    for t in tasks:
+        st = t.get("status", "todo").lower()
+        if st in status_counts:
+            status_counts[st] += 1
+        else:
+            status_counts[st] = status_counts.get(st, 0) + 1
+            
+    status_breakdown = ", ".join([f"{k}: {v}" for k, v in status_counts.items()])
+    
+    # 3. Docs Count
+    doc_count = 0
+    if os.path.exists(DOCS_DIR):
+        for root, dirs, files in os.walk(DOCS_DIR):
+            for file in files:
+                if file.endswith(".md"):
+                    doc_count += 1
+                    
+    # 4. Memories Count
+    memories = []
+    if os.path.exists(MEMORIES_PATH):
+        try:
+            with open(MEMORIES_PATH, "r", encoding="utf-8") as f:
+                memories = json.load(f)
+        except:
+            pass
+    mem_count = len(memories)
+    
+    # 5. Time Tracked
+    total_duration = 0
+    if os.path.exists(TIME_LOG_PATH):
+        try:
+            with open(TIME_LOG_PATH, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+                total_duration = sum(l.get("duration", 0) for l in logs)
+        except:
+            pass
+            
+    active_timer_str = "None"
+    if os.path.exists(TIMER_STATE_PATH):
+        try:
+            with open(TIMER_STATE_PATH, "r", encoding="utf-8") as f:
+                timer_state = json.load(f)
+                elapsed = int(time.time() - timer_state["startedAt"])
+                active_timer_str = f"Task {timer_state['taskId']} ({timer_state['title']}) - active for {format_duration(elapsed)}"
+        except:
+            pass
+            
+    # 6. Sync status
+    sync_files = {
+        "CLAUDE.md": "CLAUDE.md",
+        "ANTIGRAVITY.md": "ANTIGRAVITY.md",
+        ".cursorrules": ".cursorrules",
+        ".windsurfrules": ".windsurfrules",
+        "copilot-instructions.md": ".github/copilot-instructions.md"
+    }
+    
+    sync_statuses = {}
+    all_synced = True
+    for label, rel_path in sync_files.items():
+        full_p = os.path.join(ROOT_DIR, rel_path)
+        exists = os.path.exists(full_p)
+        sync_statuses[label] = "OK" if exists else "Missing"
+        if not exists:
+            all_synced = False
+            
+    # Print status report
+    print("=========================================")
+    print("         AIM Project Status Summary      ")
+    print("=========================================")
+    print(f"Project Name:  {project_name}")
+    print(f"Tech Stack:    {', '.join(tech_stack) if tech_stack else 'Not configured'}")
+    print(f"Workspace:     {ROOT_DIR}")
+    print()
+    print("Memory Layer Statistics:")
+    print(f"  Tasks:       {len(tasks)} total ({status_breakdown})")
+    print(f"  Docs:        {doc_count} files (@doc/)")
+    print(f"  Memories:    {mem_count} entries recorded")
+    print()
+    print("Time Tracking:")
+    print(f"  Total Spent: {format_duration(total_duration)}")
+    print(f"  Active:      {active_timer_str}")
+    print()
+    print("Agent Config Sync Status:")
+    for label, status in sync_statuses.items():
+        print(f"  {label:<30} [{status}]")
+    print(f"  Sync Health: {'Healthy & Synchronized' if all_synced else 'Out of sync / Run `aim sync` to update'}")
+    print("=========================================")
+
+# ==========================================
+# 12. TEMPLATE COMMANDS & UTILS
+# ==========================================
+def to_words(s):
+    import re
+    s = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', s)
+    return re.findall(r'[a-zA-Z0-9]+', s)
+
+def kebab_case(s):
+    return "-".join(w.lower() for w in to_words(s))
+
+def camel_case(s):
+    words = to_words(s)
+    if not words:
+        return ""
+    return words[0].lower() + "".join(w.capitalize() for w in words[1:])
+
+def pascal_case(s):
+    return "".join(w.capitalize() for w in to_words(s))
+
+def snake_case(s):
+    return "_".join(w.lower() for w in to_words(s))
+
+def render_template_string(template_str, variables):
+    import re
+    def replacer(match):
+        content = match.group(1).strip()
+        parts = content.split()
+        if len(parts) == 2:
+            helper, var_name = parts[0], parts[1]
+            val = variables.get(var_name, "")
+            if helper == "kebabCase":
+                return kebab_case(val)
+            elif helper == "camelCase":
+                return camel_case(val)
+            elif helper == "pascalCase":
+                return pascal_case(val)
+            elif helper == "snakeCase":
+                return snake_case(val)
+            elif helper == "lowerCase":
+                return val.lower()
+            elif helper == "upperCase":
+                return val.upper()
+            return val
+        else:
+            return str(variables.get(content, ""))
+            
+    return re.sub(r'\{\{\s*([^{}]+)\s*\}\}', replacer, template_str)
+
+def parse_yaml(content):
+    import re
+    data = {}
+    lines = content.splitlines()
+    current_key = None
+    current_list = None
+    
+    for line in lines:
+        line_clean = re.sub(r'#.*$', '', line).rstrip()
+        if not line_clean.strip():
+            continue
+            
+        indent = len(line) - len(line.lstrip())
+        
+        # If it's a list item
+        if line_clean.strip().startswith("-"):
+            if current_list is not None:
+                item_str = line_clean.strip()[1:].strip()
+                if ":" in item_str:
+                    parts = item_str.split(":", 1)
+                    k = parts[0].strip()
+                    v = parts[1].strip()
+                    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                        v = v[1:-1]
+                    if not current_list or not isinstance(current_list[-1], dict):
+                        current_list.append({})
+                    current_list[-1][k] = v
+                else:
+                    if (item_str.startswith('"') and item_str.endswith('"')) or (item_str.startswith("'") and item_str.endswith("'")):
+                        item_str = item_str[1:-1]
+                    current_list.append(item_str)
+            continue
+            
+        if ":" in line_clean:
+            parts = line_clean.split(":", 1)
+            k = parts[0].strip()
+            v = parts[1].strip()
+            if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                v = v[1:-1]
+            
+            if indent == 0:
+                if v == "":
+                    if k in ["prompts", "actions"]:
+                        data[k] = []
+                        current_list = data[k]
+                    else:
+                        data[k] = {}
+                        current_list = None
+                    current_key = k
+                else:
+                    data[k] = v
+                    current_list = None
+                    current_key = k
+            else:
+                if current_key and isinstance(data[current_key], dict):
+                    data[current_key][k] = v
+                elif current_key and isinstance(data[current_key], list):
+                    if not data[current_key] or not isinstance(data[current_key][-1], dict):
+                        data[current_key].append({})
+                    data[current_key][-1][k] = v
+                    
+    return data
+
+def cmd_template(args):
+    ensure_directories()
+    if args.template_action == "create":
+        name = args.name.strip().lower()
+        if not name:
+            print("[-] Invalid template name.")
+            sys.exit(1)
+            
+        t_dir = os.path.join(TEMPLATES_DIR, name)
+        if os.path.exists(t_dir):
+            print(f"[-] Template '{name}' already exists.")
+            sys.exit(1)
+            
+        os.makedirs(t_dir)
+        
+        # Default config
+        config_content = f"""# Template: {name}
+name: {name}
+description: Create a {name}
+version: 1.0.0
+destination: src
+prompts:
+  - name: name
+    type: text
+    message: "Name?"
+    validate: required
+actions:
+  - type: add
+    template: "main.hbs"
+    path: "{{{{kebabCase name}}}}.ts"
+    skipIfExists: true
+messages:
+  success: "Created: {{{{name}}}}"
+"""
+        with open(os.path.join(t_dir, "_template.yaml"), "w", encoding="utf-8") as f:
+            f.write(config_content)
+            
+        # Default main.hbs
+        main_content = f"""// Generated: {{{{name}}}}
+// Created by AIM template: {name}
+"""
+        with open(os.path.join(t_dir, "main.hbs"), "w", encoding="utf-8") as f:
+            f.write(main_content)
+            
+        print(f"[+] Created template: {name}")
+        print(f"[*] Edit the template config at: .ai-context/templates/{name}/_template.yaml")
+        
+    elif args.template_action == "list":
+        if not os.path.exists(TEMPLATES_DIR):
+            print("[*] No templates found.")
+            return
+            
+        templates = []
+        for d in os.listdir(TEMPLATES_DIR):
+            t_path = os.path.join(TEMPLATES_DIR, d)
+            if os.path.isdir(t_path) and os.path.exists(os.path.join(t_path, "_template.yaml")):
+                try:
+                    with open(os.path.join(t_path, "_template.yaml"), "r", encoding="utf-8") as f:
+                        cfg = parse_yaml(f.read())
+                    templates.append(cfg)
+                except Exception as e:
+                    print(f"[-] Warning: Failed to parse template {d}: {e}")
+                    
+        if not templates:
+            print("[*] No templates found.")
+            return
+            
+        print(f"{'Name':<15} {'Description':<50}")
+        print("-" * 65)
+        for t in templates:
+            name = t.get("name", "unknown")
+            desc = t.get("description", "")
+            print(f"{name:<15} {desc:<50}")
+            
+    elif args.template_action == "view":
+        name = args.name.strip().lower()
+        t_path = os.path.join(TEMPLATES_DIR, name, "_template.yaml")
+        if not os.path.exists(t_path):
+            print(f"[-] Template '{name}' not found.")
+            sys.exit(1)
+            
+        with open(t_path, "r", encoding="utf-8") as f:
+            print(f.read())
+            
+    elif args.template_action == "run":
+        name = args.name.strip().lower()
+        t_dir = os.path.join(TEMPLATES_DIR, name)
+        t_path = os.path.join(t_dir, "_template.yaml")
+        if not os.path.exists(t_path):
+            print(f"[-] Template '{name}' not found.")
+            sys.exit(1)
+            
+        with open(t_path, "r", encoding="utf-8") as f:
+            cfg = parse_yaml(f.read())
+            
+        variables = {}
+        for var in args.var or []:
+            if "=" in var:
+                k, v = var.split("=", 1)
+                variables[k.strip()] = v.strip()
+                
+        prompts = cfg.get("prompts", [])
+        for prompt in prompts:
+            p_name = prompt.get("name")
+            if p_name and p_name not in variables:
+                msg = prompt.get("message", f"{p_name}?")
+                default = prompt.get("default", "")
+                prompt_msg = f"{msg} "
+                if default:
+                    prompt_msg += f"({default}) "
+                val = input(prompt_msg).strip()
+                if not val and default:
+                    val = default
+                if not val and prompt.get("validate") == "required":
+                    print(f"[-] {p_name} is required.")
+                    sys.exit(1)
+                variables[p_name] = val
+                
+        actions = cfg.get("actions", [])
+        dest_base = cfg.get("destination", "")
+        dest_root = os.path.join(ROOT_DIR, dest_base) if dest_base else ROOT_DIR
+        
+        dry_run = args.dry_run
+        if dry_run:
+            print("[*] Dry-run mode: Preview of files that would be generated:")
+            print("-" * 65)
+            
+        success_files = []
+        for action in actions:
+            a_type = action.get("type", "add")
+            if a_type == "add":
+                tpl_file = action.get("template")
+                dest_file_pattern = action.get("path")
+                
+                if not tpl_file or not dest_file_pattern:
+                    print("[-] Error: action missing template or path.")
+                    continue
+                    
+                tpl_path = os.path.join(t_dir, tpl_file)
+                if not os.path.exists(tpl_path):
+                    print(f"[-] Error: template source file '{tpl_file}' not found.")
+                    continue
+                    
+                with open(tpl_path, "r", encoding="utf-8") as f:
+                    tpl_content = f.read()
+                    
+                rendered_content = render_template_string(tpl_content, variables)
+                rendered_path = render_template_string(dest_file_pattern, variables)
+                
+                final_dest_path = os.path.normpath(os.path.join(dest_root, rendered_path))
+                
+                if dry_run:
+                    print(f"Target Path: {os.path.relpath(final_dest_path, ROOT_DIR)}")
+                    print("Content Preview:")
+                    print(rendered_content)
+                    print("-" * 65)
+                else:
+                    if action.get("skipIfExists") == "true" and os.path.exists(final_dest_path):
+                        print(f"[*] Skipped: File already exists at {final_dest_path}")
+                        continue
+                        
+                    parent_dir = os.path.dirname(final_dest_path)
+                    if not os.path.exists(parent_dir):
+                        os.makedirs(parent_dir)
+                        
+                    with open(final_dest_path, "w", encoding="utf-8") as f:
+                        f.write(rendered_content)
+                    print(f"[+] Created: {os.path.relpath(final_dest_path, ROOT_DIR)}")
+                    success_files.append(final_dest_path)
+                    
+        if not dry_run:
+            success_msg_pattern = cfg.get("messages", {}).get("success", "") if isinstance(cfg.get("messages"), dict) else ""
+            if success_msg_pattern:
+                print(render_template_string(success_msg_pattern, variables))
+            else:
+                print(f"[+] Template '{name}' run successfully.")
+
+# ==========================================
 # MAIN DISPATCHER
 # ==========================================
 def main():
@@ -585,6 +1380,10 @@ def main():
     create_task.add_argument("--ac", action="append", help="Acceptance criteria item")
     create_task.add_argument("-p", "--priority", choices=["low", "medium", "high", "urgent"], help="Task priority")
     create_task.add_argument("-a", "--assignee", help="Task assignee")
+    create_task.add_argument("--parent", type=int, help="Parent task ID")
+    create_task.add_argument("-l", "--label", action="append", help="Label tag (repeatable)")
+    create_task.add_argument("--spec", help="Linked spec document path")
+    create_task.add_argument("--plan", help="Linked plan document path")
     
     view_task = task_sub.add_parser("view", help="View a specific task")
     view_task.add_argument("id", type=int, help="Task ID")
@@ -595,6 +1394,12 @@ def main():
     edit_task.add_argument("-a", "--assignee", help="Assignee user")
     edit_task.add_argument("--add-ac", help="Add acceptance criteria item")
     edit_task.add_argument("--check-ac", type=int, help="Mark AC index as completed (1-based)")
+    edit_task.add_argument("--parent", type=int, help="Update parent task ID")
+    edit_task.add_argument("--add-label", help="Add label tag")
+    edit_task.add_argument("--remove-label", help="Remove label tag")
+    edit_task.add_argument("--spec", help="Update spec document path")
+    edit_task.add_argument("--plan", help="Update plan document path")
+    edit_task.add_argument("-d", "--desc", help="Update task description")
     
     # doc
     doc_parser = subparsers.add_parser("doc", help="Manage documentation")
@@ -628,10 +1433,66 @@ def main():
     # validate
     subparsers.add_parser("validate", help="Validate links and references health")
     
+    # status
+    subparsers.add_parser("status", help="Show project readiness summary")
+    
     # browser
     browser_parser = subparsers.add_parser("browser", help="Launch the AIM Web UI in your browser")
     browser_parser.add_argument("-p", "--port", type=int, default=6420, help="Port to run the server on")
     browser_parser.add_argument("--no-open", action="store_true", help="Start the server without opening the browser automatically")
+    
+    # board
+    subparsers.add_parser("board", help="Show the ASCII Kanban board")
+    
+    # time
+    time_parser = subparsers.add_parser("time", help="Track time spent on tasks")
+    time_sub = time_parser.add_subparsers(dest="time_action", required=True)
+    
+    time_start = time_sub.add_parser("start", help="Start timer for a task")
+    time_start.add_argument("id", type=int, help="Task ID")
+    
+    time_stop = time_sub.add_parser("stop", help="Stop the active timer")
+    time_stop.add_argument("-n", "--note", help="Add a note to this time entry")
+    
+    time_sub.add_parser("status", help="Show current timer status")
+    
+    time_log = time_sub.add_parser("log", help="Show time logs for a task")
+    time_log.add_argument("id", type=int, help="Task ID")
+    
+    time_sub.add_parser("report", help="Generate a time tracking report")
+    
+    # user
+    user_parser = subparsers.add_parser("user", help="Manage project users & assignees")
+    user_sub = user_parser.add_subparsers(dest="user_action", required=True)
+    
+    user_sub.add_parser("list", help="List all registered users")
+    
+    add_user = user_sub.add_parser("add", help="Add a new user")
+    add_user.add_argument("username", help="Username to add")
+    
+    remove_user = user_sub.add_parser("remove", help="Remove a user")
+    remove_user.add_argument("username", help="Username to remove")
+    
+    rename_user = user_sub.add_parser("rename", help="Rename a user")
+    rename_user.add_argument("old_username", help="Old username to rename")
+    rename_user.add_argument("new_username", help="New username to set")
+    
+    # template
+    template_parser = subparsers.add_parser("template", help="Manage code generation templates")
+    template_sub = template_parser.add_subparsers(dest="template_action", required=True)
+    
+    template_sub.add_parser("list", help="List all templates")
+    
+    create_template = template_sub.add_parser("create", help="Create a new template scaffold")
+    create_template.add_argument("name", help="Template name")
+    
+    view_template = template_sub.add_parser("view", help="View template details")
+    view_template.add_argument("name", help="Template name")
+    
+    run_template = template_sub.add_parser("run", help="Run a code generation template")
+    run_template.add_argument("name", help="Template name")
+    run_template.add_argument("--dry-run", action="store_true", help="Preview without writing files")
+    run_template.add_argument("-v", "--var", action="append", help="Template variable (key=value, repeatable)")
     
     args = parser.parse_args()
     
@@ -650,8 +1511,18 @@ def main():
         cmd_search(args)
     elif args.command == "validate":
         cmd_validate(args)
+    elif args.command == "status":
+        cmd_status(args)
     elif args.command == "browser":
         cmd_browser(args)
+    elif args.command == "board":
+        cmd_board(args)
+    elif args.command == "time":
+        cmd_time(args)
+    elif args.command == "user":
+        cmd_user(args)
+    elif args.command == "template":
+        cmd_template(args)
 
 if __name__ == "__main__":
     main()
