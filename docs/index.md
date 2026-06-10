@@ -8,6 +8,9 @@ Choose a guide below to explore:
 
 ## 📖 Guides & Reference Manuals
 
+### 0. [Interactive Demo Guide (AeroMap)](demo-guide.md)
+Explore a pre-configured Google Maps alternative workspace using AIM's CLI and Web UI features.
+
 ### 1. [CLI Reference Guide](cli-reference.md)
 Detailed usage, parameter options, and command line examples for all AIM subcommands:
 * Core lifecycle (`init`, `sync`).
