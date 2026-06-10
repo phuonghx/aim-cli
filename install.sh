@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # AIM Installer for macOS and Linux
-# Usage: curl -fsSL https://raw.githubusercontent.com/<username>/aim-cli/master/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.sh | bash
 
 set -e
 
@@ -31,7 +31,7 @@ if ! $PYTHON_CMD -m pip --version &>/dev/null; then
 fi
 
 # 3. Install AIM via pip from the Git repository
-REPO_URL="git+https://github.com/hungluu-lingolab/yourclass-academy.git"
+REPO_URL="git+https://github.com/phuonghx/aim-cli.git"
 
 echo "[*] Installing AIM CLI from: $REPO_URL ..."
 $PYTHON_CMD -m pip install --upgrade "$REPO_URL"
