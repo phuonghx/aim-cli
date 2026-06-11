@@ -613,6 +613,73 @@ def collect_status():
 
 
 # ==========================================
+# Spec-driven development — `aim spec`
+# ==========================================
+def tasks_without_spec():
+    """IDs of tasks that have no linked spec document."""
+    tasks, _errors = load_tasks()
+    return [t["id"] for t in tasks if not (t.get("spec") or "").strip()]
+
+
+def spec_coverage():
+    """Spec-link coverage across tasks: {total, withSpec, withoutSpec[ids]}."""
+    tasks, _errors = load_tasks()
+    without = [t["id"] for t in tasks if not (t.get("spec") or "").strip()]
+    return {"total": len(tasks), "withSpec": len(tasks) - len(without), "withoutSpec": without}
+
+
+def import_spec(spec_dir, name=None):
+    """Import a spec-kit feature directory (spec.md, optional plan.md) into AIM:
+    copy them into .ai-context/docs/specs|plans and create an umbrella task
+    linked to the spec. Returns a summary. Agents expand the task into subtasks
+    (e.g. via the decompose_prd MCP prompt)."""
+    cli = _cli()
+    if not os.path.isdir(spec_dir):
+        raise ValueError(f"Not a directory: {spec_dir}")
+    name = name or os.path.basename(os.path.normpath(spec_dir))
+    slug = re.sub(r"[^\w]+", "-", name).strip("-").lower() or "spec"
+
+    files = {f.lower(): f for f in os.listdir(spec_dir)}
+    if "spec.md" not in files:
+        raise ValueError(f"No spec.md found in {spec_dir}")
+
+    def _read(fn):
+        with open(os.path.join(spec_dir, fn), "r", encoding="utf-8") as f:
+            return f.read()
+
+    result = {"name": name}
+
+    spec_content = _read(files["spec.md"])
+    specs_dir = os.path.join(cli.DOCS_DIR, "specs")
+    os.makedirs(specs_dir, exist_ok=True)
+    spec_rel = f"specs/{slug}.md"
+    with open(os.path.join(cli.DOCS_DIR, spec_rel), "w", encoding="utf-8") as f:
+        f.write(spec_content)
+    result["specDoc"] = spec_rel
+    spec_link = f"@doc/{spec_rel}"
+
+    plan_link = ""
+    if "plan.md" in files:
+        plans_dir = os.path.join(cli.DOCS_DIR, "plans")
+        os.makedirs(plans_dir, exist_ok=True)
+        plan_rel = f"plans/{slug}.md"
+        with open(os.path.join(cli.DOCS_DIR, plan_rel), "w", encoding="utf-8") as f:
+            f.write(_read(files["plan.md"]))
+        result["planDoc"] = plan_rel
+        plan_link = f"@doc/{plan_rel}"
+
+    title = doc_title(spec_content, name)
+    meta = create_task(
+        f"Implement: {title}",
+        description=f"Umbrella task imported from spec-kit directory: {spec_dir}",
+        spec=spec_link,
+        plan=plan_link,
+    )
+    result["taskId"] = meta["id"]
+    return result
+
+
+# ==========================================
 # Ingest — `aim ingest` (reverse-sync)
 # ==========================================
 # Extra hand-written rule files to scan beyond the sync targets.

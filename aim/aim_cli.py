@@ -900,20 +900,56 @@ def cmd_search(args):
 # ==========================================
 def cmd_validate(args):
     ensure_directories()
+    core = _core()
     print("[*] Validating project memory layer references...")
 
-    errors = _core().validate_references()
+    errors = core.validate_references()
     for err in errors:
         if err["kind"] == "task":
             print(f"[-] Broken task link in {err['source']}: @task-{err['ref']} does not exist.")
         else:
             print(f"[-] Broken doc link in {err['source']}: @doc/{err['ref']} does not exist.")
 
-    if not errors:
+    missing_spec = []
+    if getattr(args, "require_spec", False):
+        missing_spec = core.tasks_without_spec()
+        for tid in missing_spec:
+            print(f"[-] Task {tid} has no linked spec (--require-spec).")
+
+    total = len(errors) + len(missing_spec)
+    if total == 0:
         print("[+] All references are healthy!")
     else:
-        print(f"[-] Found {len(errors)} broken reference link(s).")
+        print(f"[-] Found {total} issue(s).")
         sys.exit(1)
+
+# ==========================================
+# 7.5. SPEC COMMANDS (spec-driven development)
+# ==========================================
+def cmd_spec(args):
+    ensure_directories()
+    core = _core()
+
+    if args.spec_action == "import":
+        try:
+            result = core.import_spec(args.dir, name=args.name)
+        except ValueError as e:
+            print(f"[-] {e}")
+            sys.exit(1)
+        print(f"[+] Imported spec '{result['name']}':")
+        print(f"  - spec doc:  @doc/{result['specDoc']}")
+        if result.get("planDoc"):
+            print(f"  - plan doc:  @doc/{result['planDoc']}")
+        print(f"  - umbrella task: TASK-{result['taskId']}")
+        print("[*] Expand it into subtasks with the MCP `decompose_prd` prompt, "
+              "or `aim task create ... --depends-on`.")
+
+    elif args.spec_action == "coverage":
+        cov = core.spec_coverage()
+        print("Spec coverage:")
+        print(f"  {cov['withSpec']}/{cov['total']} tasks have a linked spec.")
+        if cov["withoutSpec"]:
+            print(f"  Missing: {', '.join('task-' + str(t) for t in cov['withoutSpec'])}")
 
 # ==========================================
 # 8. BROWSER COMMAND
@@ -2046,7 +2082,16 @@ def main():
     search_parser.add_argument("query", help="Search query string")
 
     # validate
-    subparsers.add_parser("validate", help="Validate links and references health")
+    validate_parser = subparsers.add_parser("validate", help="Validate links and references health")
+    validate_parser.add_argument("--require-spec", action="store_true", help="Also flag tasks that have no linked spec")
+
+    # spec
+    spec_parser = subparsers.add_parser("spec", help="Spec-driven development helpers")
+    spec_sub = spec_parser.add_subparsers(dest="spec_action", required=True)
+    import_spec_p = spec_sub.add_parser("import", help="Import a spec-kit directory (spec.md/plan.md) into AIM docs + an umbrella task")
+    import_spec_p.add_argument("dir", help="Path to the spec-kit feature directory")
+    import_spec_p.add_argument("--name", help="Override the spec name (default: directory name)")
+    spec_sub.add_parser("coverage", help="Show spec-link coverage across tasks")
 
     # ingest
     ingest_parser = subparsers.add_parser("ingest", help="Import existing hand-written rule files (CLAUDE.md, .cursorrules, ...) into AIM")
@@ -2146,6 +2191,8 @@ def main():
         cmd_search(args)
     elif args.command == "validate":
         cmd_validate(args)
+    elif args.command == "spec":
+        cmd_spec(args)
     elif args.command == "ingest":
         cmd_ingest(args)
     elif args.command == "doctor":
