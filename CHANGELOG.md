@@ -5,6 +5,21 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-06-11
+
+Two-way GitHub sync (#7) — completes the GitHub integration.
+
+### Added
+- **`aim github pull [id] [--all] [--dry-run]`** — reconcile AIM tasks from
+  their linked GitHub issues. Conflict policy: GitHub is canonical for issue
+  state (CLOSED→done, reopened→todo) and the issue title; AIM stays canonical
+  for acceptance criteria, dependencies, and spec links (left untouched).
+  `--dry-run` previews changes (drift) without writing.
+- **`aim github status --check`** — fetch live issues and report any drift vs
+  AIM, without applying it.
+
+---
+
 ## [1.6.0] - 2026-06-11
 
 Backlog items from the AIM Roadmap project.

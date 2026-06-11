@@ -980,7 +980,35 @@ def cmd_github(args):
             except RuntimeError as e:
                 print(f"[-] Could not sync Project Status field: {e}")
 
+    elif args.github_action == "pull":
+        try:
+            if args.id:
+                results = [core.pull_task(args.id, dry_run=args.dry_run)]
+            else:
+                results = core.pull_all(dry_run=args.dry_run)
+        except RuntimeError as e:
+            print(f"[-] {e}")
+            sys.exit(1)
+        changed = [r for r in results if r["changes"]]
+        if not changed:
+            print("[*] Up to date — every linked task matches its GitHub issue.")
+            return
+        verb = "Would update" if args.dry_run else "Updated"
+        for r in changed:
+            diffs = ", ".join(f"{k}={v}" for k, v in r["changes"].items())
+            print(f"[+] {verb} TASK-{r['taskId']} from issue #{r['issue']}: {diffs}")
+
     elif args.github_action == "status":
+        if getattr(args, "check", False):
+            drift = [r for r in core.pull_all(dry_run=True) if r["changes"]]
+            if not drift:
+                print("[+] No drift — every linked task matches its GitHub issue.")
+                return
+            print("[~] Drift detected (run `aim github pull` to reconcile):")
+            for r in drift:
+                diffs = ", ".join(f"{k}={v}" for k, v in r["changes"].items())
+                print(f"  TASK-{r['taskId']} (#{r['issue']}): {diffs}")
+            return
         rows = core.github_status()
         if not rows:
             print("[*] No tasks found.")
@@ -2171,8 +2199,13 @@ def main():
     gh_push = github_sub.add_parser("push", help="Create/update a GitHub issue per task (idempotent)")
     gh_push.add_argument("id", type=int, nargs="?", help="Task ID (omit, or use --all, to push every task)")
     gh_push.add_argument("--all", action="store_true", help="Push every task (default when no ID is given)")
-    gh_push.add_argument("--project", type=int, help="Also add issues to this Project (v2) number")
-    github_sub.add_parser("status", help="Show task <-> GitHub issue linkage")
+    gh_push.add_argument("--project", type=int, help="Also add issues to this Project (v2) number; syncs the Status field")
+    gh_pull = github_sub.add_parser("pull", help="Reconcile tasks from their GitHub issues (state/title)")
+    gh_pull.add_argument("id", type=int, nargs="?", help="Task ID (omit, or use --all, to pull every linked task)")
+    gh_pull.add_argument("--all", action="store_true", help="Pull every linked task (default when no ID is given)")
+    gh_pull.add_argument("--dry-run", action="store_true", help="Show what would change without writing (drift preview)")
+    gh_status = github_sub.add_parser("status", help="Show task <-> GitHub issue linkage")
+    gh_status.add_argument("--check", action="store_true", help="Fetch live issues and report drift vs AIM")
     gh_proj = github_sub.add_parser("create-project", help="Create a GitHub Project (v2) for this repo")
     gh_proj.add_argument("title", help="Project title")
 

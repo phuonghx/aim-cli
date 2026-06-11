@@ -127,12 +127,16 @@ to the `gh` CLI (requires `gh auth login`).
 
 ```bash
 aim github create-project "AIM Roadmap"   # create a Project (v2)
-aim github push --all --project 3         # create/update an issue per task, add to the project
-aim github status                         # show task <-> issue linkage
+aim github push --all --project 3         # create/update an issue per task, add to the project, sync Status
+aim github pull --all                     # two-way: reconcile tasks from issue state/title
+aim github status --check                 # report drift between AIM and GitHub
 ```
 
 Issues are idempotent (the issue number is stored back in each task); a `done`
-task closes its issue.
+task closes its issue, and `push --project` sets each card's Status field. Sync
+is two-way: `pull` brings issue state/title changes back into AIM (GitHub is
+canonical for state/title; AIM stays canonical for acceptance criteria,
+dependencies, and spec links).
 
 ---
 
