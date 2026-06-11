@@ -104,7 +104,28 @@ claude mcp add aim -- aim mcp
 { "mcpServers": { "aim": { "command": "aim", "args": ["mcp"] } } }
 ```
 
-Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`. Zero external dependencies — pure stdlib JSON-RPC over stdio.
+Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`, `record_correction`, `review_memory`, `doctor`. Zero external dependencies — pure stdlib JSON-RPC over stdio.
+
+When the user corrects the agent mid-session, the agent can call
+`record_correction(...)` to persist the lesson as a memory — it then syncs to
+every tool, so the next session (in any client) does not repeat the mistake.
+
+---
+
+## 🩺 Context Health (`aim doctor`)
+
+AIM's wedge is fighting **context drift** — stale rules and decisions that make
+agents confidently wrong. `aim doctor` detects it deterministically (no LLM):
+
+```bash
+aim doctor          # full report; exits non-zero on high/medium findings (CI-friendly)
+aim doctor --mine   # only memories you authored
+```
+
+It cross-references each memory's `refs` against git history (e.g. "this decision
+mentions `aim/auth.py`, which changed 23 commits since you last reviewed it →
+likely stale → run `aim memory review 4`"), and flags broken references,
+duplicate task IDs, and spec drift.
 
 ---
 

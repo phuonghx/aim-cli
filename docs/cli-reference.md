@@ -25,9 +25,13 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 5. [Persistent Memory](#5-persistent-memory)
    * [`aim memory add`](#aim-memory-add)
    * [`aim memory list`](#aim-memory-list)
+   * [`aim memory edit`](#aim-memory-edit)
+   * [`aim memory review`](#aim-memory-review)
+   * [`aim memory rm`](#aim-memory-rm)
 6. [Global Command Suite](#6-global-command-suite)
    * [`aim search`](#aim-search)
    * [`aim validate`](#aim-validate)
+   * [`aim doctor`](#aim-doctor)
    * [`aim status`](#aim-status)
    * [`aim board`](#aim-board)
 7. [Time Tracking](#7-time-tracking)
@@ -221,18 +225,44 @@ Save a reusable pattern, rule, or architectural decision.
   * `content` (Required): The memory text to remember.
 * **Options:**
   * `-c`, `--category`: Categorization keyword (e.g. `decision`, `convention`, `guideline`). Default: `general`.
-  * `-l`, `--layer`: Memory scope (`project` or `global`). Default: `project`.
+  * `-l`, `--layer`: Memory scope (`project` or `global`). `global` persists to `~/.aim/memories.json` and follows you across every repo. Default: `project`.
+* **Notes:** Memories automatically capture the `author` (`git config user.name`),
+  a `reviewedAt` timestamp, and `refs` — file paths / `@`-refs found in the text,
+  which `aim doctor` uses to detect staleness. Wrap paths in backticks
+  (`` `src/lib/http.ts` ``) so they are picked up as refs.
 * **Example:**
   ```bash
   aim memory add "Prefer React Functional Components and Hooks over Class Components" -c convention -l project
   ```
 
 ### `aim memory list`
-List all recorded project memories.
+List all recorded memories (project + global), with author column.
 * **Usage:** `aim memory list`
+
+### `aim memory edit`
+Edit a memory's content, category, or layer. Editing content re-extracts refs.
+* **Arguments:** `id` (Required). Optional new `content` as a positional.
+* **Options:** `-c`/`--category`, `-l`/`--layer` (moves between project/global).
 * **Example:**
   ```bash
-  aim memory list
+  aim memory edit 4 "Auth now uses RS256 as of 2026-06" -c decision
+  ```
+
+### `aim memory review`
+Mark a memory as freshly verified, resetting its staleness clock (the fix
+`aim doctor` suggests for a stale-flagged memory).
+* **Arguments:** `id` (Required).
+* **Example:**
+  ```bash
+  aim memory review 4
+  ```
+
+### `aim memory rm`
+Delete a memory by ID.
+* **Arguments:** `id` (Required).
+* **Example:**
+  ```bash
+  aim memory rm 7
   ```
 
 ---
@@ -254,6 +284,25 @@ Scan tasks and documents for broken mentions (e.g. `@task-999` or `@doc/missing`
 * **Example:**
   ```bash
   aim validate
+  ```
+
+### `aim doctor`
+Diagnose **context drift** — the wedge AIM is built around. Deterministic, no
+LLM: it cross-references your memories/docs/tasks against git history and the
+workspace to surface context that has likely gone stale.
+
+Checks: broken `@task`/`@doc` references; memories whose referenced files have
+changed many commits since last review; memories not reviewed in 90+ days;
+duplicate or mismatched task IDs (cross-branch merge artifacts); done tasks
+whose spec changed afterward; idle in-progress tasks; spec coverage.
+
+Exits non-zero when there are high/medium findings, so it works as a CI gate.
+* **Options:**
+  * `--mine`: only show findings for memories you authored.
+* **Example:**
+  ```bash
+  aim doctor
+  aim doctor --mine
   ```
 
 ### `aim status`
