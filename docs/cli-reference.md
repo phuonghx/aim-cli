@@ -12,6 +12,7 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
    * [`aim task create`](#aim-task-create)
    * [`aim task list`](#aim-task-list)
    * [`aim task next`](#aim-task-next)
+   * [`aim task renumber`](#aim-task-renumber)
    * [`aim task view`](#aim-task-view)
    * [`aim task edit`](#aim-task-edit)
 3. [User & Team Management](#3-user--team-management)
@@ -127,6 +128,16 @@ MCP `next_task` tool.
 * **Example:**
   ```bash
   aim task next
+  ```
+
+### `aim task renumber`
+Renumber a task and rewrite every reference to it — `@task-<old>` mentions in any
+task or doc, plus `dependsOn` and parent pointers. Resolves the duplicate /
+mismatched-ID findings reported by `aim doctor` (cross-branch merge artifacts).
+* **Arguments:** `old_id`, `new_id` (the new id must be free).
+* **Example:**
+  ```bash
+  aim task renumber 13 14
   ```
 
 ### `aim task view`
@@ -507,7 +518,7 @@ Create or update a GitHub issue per task — idempotent via the `**GitHub Issue:
 number stored back in each task. Maps a `done` task to a closed issue, otherwise
 open.
 * **Arguments:** `id` (optional) — a single task; omit to push all tasks.
-* **Options:** `--project N` — also add the issues to Project (v2) number `N`.
+* **Options:** `--project N` — also add the issues to Project (v2) number `N`, and set each card's **Status** field to match its AIM status (todo→Todo, in-progress/in-review→In Progress, done→Done).
 * **Example:**
   ```bash
   aim github push --all --project 3

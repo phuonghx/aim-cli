@@ -569,6 +569,15 @@ def cmd_task(args):
         next_id = create_task_file(meta)
         print(f"[+] Task created successfully: task-{next_id} (Title: {args.title})")
 
+    elif args.task_action == "renumber":
+        try:
+            res = _core().renumber_task(args.old_id, args.new_id)
+        except ValueError as e:
+            print(f"[-] {e}")
+            sys.exit(1)
+        print(f"[+] Renumbered task {res['old']} -> {res['new']} "
+              f"({res['filesUpdated']} referencing file(s) updated).")
+
     elif args.task_action == "next":
         t = _core().next_task()
         if not t:
@@ -965,6 +974,11 @@ def cmd_github(args):
             print(f"[+] TASK-{r['taskId']} -> issue #{r['issue']} ({r['action']}, status={r['status']})")
         if args.project:
             print(f"[+] Linked issues to project #{args.project}.")
+            try:
+                n = core.sync_project_status(args.project)
+                print(f"[+] Synced Status field on {n} card(s) to match AIM status.")
+            except RuntimeError as e:
+                print(f"[-] Could not sync Project Status field: {e}")
 
     elif args.github_action == "status":
         rows = core.github_status()
@@ -2062,6 +2076,10 @@ def main():
     task_sub.add_parser("list", help="List all tasks")
 
     task_sub.add_parser("next", help="Show the next actionable task (deps satisfied, by priority)")
+
+    renumber_task = task_sub.add_parser("renumber", help="Renumber a task and rewrite all references (fixes duplicate IDs)")
+    renumber_task.add_argument("old_id", type=int, help="Current task ID")
+    renumber_task.add_argument("new_id", type=int, help="New (free) task ID")
 
     create_task = task_sub.add_parser("create", help="Create a new task")
     create_task.add_argument("title", help="Task title")

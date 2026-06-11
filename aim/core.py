@@ -753,6 +753,120 @@ def create_project(title):
     return json.loads(out)
 
 
+# AIM status -> GitHub Project (v2) "Status" single-select option name.
+STATUS_TO_PROJECT_OPTION = {
+    "todo": "Todo",
+    "in-progress": "In Progress",
+    "in-review": "In Progress",
+    "blocked": "Todo",
+    "done": "Done",
+}
+
+
+def sync_project_status(project):
+    """Set each linked card's Project (v2) Status field to match its AIM task
+    status (issue #8). Fetches project metadata once. Returns the number of
+    cards updated. Best-effort: no-op if the project has no Status field."""
+    owner = repo_slug().split("/")[0]
+    proj = json.loads(_gh(["project", "view", str(project), "--owner", owner, "--format", "json"]))
+    fields = json.loads(_gh(["project", "field-list", str(project), "--owner", owner, "--format", "json"]))["fields"]
+    status_field = next((f for f in fields if f.get("name") == "Status"), None)
+    if not status_field:
+        return 0
+    option_by_name = {o["name"]: o["id"] for o in status_field.get("options", [])}
+    items = json.loads(_gh(["project", "item-list", str(project), "--owner", owner, "--format", "json"]))["items"]
+    item_by_issue = {it["content"]["number"]: it["id"]
+                     for it in items if it.get("content") and it["content"].get("number")}
+
+    tasks, _errors = load_tasks()
+    updated = 0
+    for t in tasks:
+        issue = t.get("githubIssue")
+        if not issue or issue not in item_by_issue:
+            continue
+        option_name = STATUS_TO_PROJECT_OPTION.get(t.get("status", "todo").lower(), "Todo")
+        option_id = option_by_name.get(option_name)
+        if not option_id:
+            continue
+        try:
+            _gh(["project", "item-edit", "--id", item_by_issue[issue],
+                 "--project-id", proj["id"], "--field-id", status_field["id"],
+                 "--single-select-option-id", option_id])
+            updated += 1
+        except RuntimeError:
+            pass
+    return updated
+
+
+# ==========================================
+# Task renumber — `aim task renumber` (issue #10)
+# ==========================================
+def renumber_task(old_id, new_id):
+    """Rename task <old_id> to <new_id> and rewrite every reference to it
+    (@task-N in any task/doc, plus dependsOn/parent pointers). Resolves the
+    duplicate/mismatched-id findings from `aim doctor`. Returns a summary."""
+    cli = _cli()
+    old_id, new_id = int(old_id), int(new_id)
+    if old_id == new_id:
+        raise ValueError("Old and new ids are the same.")
+    old_path = os.path.join(cli.TASKS_DIR, f"task-{old_id}.md")
+    new_path = os.path.join(cli.TASKS_DIR, f"task-{new_id}.md")
+    if not os.path.exists(old_path):
+        raise ValueError(f"Task {old_id} does not exist.")
+    if os.path.exists(new_path):
+        raise ValueError(f"Task {new_id} already exists — pick a free id.")
+
+    meta = cli.parse_task_file(old_path)
+    meta["id"] = new_id
+    cli.write_task_file(meta)          # writes task-<new_id>.md
+    os.remove(old_path)
+
+    ref_re = re.compile(rf"@task-{old_id}\b")
+    files_updated = 0
+
+    # Rewrite references in every task file (meta-level + prose text).
+    for filename in os.listdir(cli.TASKS_DIR):
+        if not (filename.startswith("task-") and filename.endswith(".md")):
+            continue
+        path = os.path.join(cli.TASKS_DIR, filename)
+        try:
+            m = cli.parse_task_file(path)
+        except (ValueError, OSError):
+            continue
+        changed = False
+        if m.get("parent") == old_id:
+            m["parent"] = new_id
+            changed = True
+        if old_id in m.get("dependsOn", []):
+            m["dependsOn"] = [new_id if d == old_id else d for d in m["dependsOn"]]
+            changed = True
+        for field in ("description", "notes"):
+            if m.get(field) and ref_re.search(m[field]):
+                m[field] = ref_re.sub(f"@task-{new_id}", m[field])
+                changed = True
+        for sec in m.get("extraSections", []):
+            if ref_re.search(sec.get("body", "")):
+                sec["body"] = ref_re.sub(f"@task-{new_id}", sec["body"])
+                changed = True
+        if changed:
+            cli.write_task_file(m)
+            files_updated += 1
+
+    # Rewrite @task references in docs (raw text).
+    for _rel, full_path in doc_files():
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            continue
+        if ref_re.search(content):
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(ref_re.sub(f"@task-{new_id}", content))
+            files_updated += 1
+
+    return {"old": old_id, "new": new_id, "filesUpdated": files_updated}
+
+
 # ==========================================
 # Spec-driven development — `aim spec`
 # ==========================================
