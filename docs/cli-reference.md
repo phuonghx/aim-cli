@@ -32,6 +32,7 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 6. [Global Command Suite](#6-global-command-suite)
    * [`aim search`](#aim-search)
    * [`aim validate`](#aim-validate)
+   * [`aim spec`](#aim-spec)
    * [`aim ingest`](#aim-ingest)
    * [`aim doctor`](#aim-doctor)
    * [`aim status`](#aim-status)
@@ -296,11 +297,32 @@ Perform regex and case-insensitive matching across all tasks, docs, and memories
 
 ### `aim validate`
 Scan tasks and documents for broken mentions (e.g. `@task-999` or `@doc/missing` pointing to non-existent files).
-* **Usage:** `aim validate`
+* **Options:**
+  * `--require-spec`: also fail if any task has no linked spec (spec-driven CI gate).
 * **Example:**
   ```bash
   aim validate
+  aim validate --require-spec
   ```
+
+### `aim spec`
+Spec-driven development helpers built on the task `spec`/`plan` fields.
+
+#### `aim spec import`
+Import a [GitHub spec-kit](https://github.com/github/spec-kit) feature directory:
+copies `spec.md` (and optional `plan.md`) into `.ai-context/docs/specs|plans` and
+creates an umbrella task linked to the spec. Expand it into subtasks with the
+`decompose_prd` MCP prompt or `aim task create ... --depends-on`.
+* **Arguments:** `dir` (Required) — the spec-kit feature directory.
+* **Options:** `--name` — override the spec name (default: directory name).
+* **Example:**
+  ```bash
+  aim spec import specs/001-user-auth
+  ```
+
+#### `aim spec coverage`
+Report how many tasks have a linked spec, and which do not.
+* **Usage:** `aim spec coverage`
 
 ### `aim ingest`
 Reverse-sync: import rules you already hand-wrote across AI-client files into
