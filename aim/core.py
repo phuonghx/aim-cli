@@ -552,6 +552,110 @@ def collect_status():
 
 
 # ==========================================
+# Ingest — `aim ingest` (reverse-sync)
+# ==========================================
+# Extra hand-written rule files to scan beyond the sync targets.
+INGEST_EXTRA_SOURCES = [".clinerules", ".rules", ".aider.conf.yml"]
+
+
+def _ingest_candidates():
+    """Relative paths of known rule files to scan, deduped, order-preserving."""
+    try:
+        from aim.sync import SYNC_TARGETS
+    except ImportError:
+        from sync import SYNC_TARGETS
+    paths = [rel for _label, rel, _gen in SYNC_TARGETS] + INGEST_EXTRA_SOURCES
+    seen, out = set(), []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def strip_aim_block(text):
+    """Return the user-authored part of a rule file: everything outside the
+    AIM:BEGIN/END managed block, minus any leading YAML/MDC frontmatter.
+    This is what makes ingest safe to re-run — AIM never re-imports its own
+    generated output."""
+    try:
+        from aim.sync import AIM_BEGIN, AIM_END
+    except ImportError:
+        from sync import AIM_BEGIN, AIM_END
+    if AIM_BEGIN in text and AIM_END in text:
+        text = text.split(AIM_BEGIN, 1)[0] + text.split(AIM_END, 1)[1]
+    # Drop a single leading frontmatter block (e.g. Cursor .mdc header).
+    text = re.sub(r"^\s*---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    return text.strip()
+
+
+def _ingest_slug(source):
+    return re.sub(r"[^\w]+", "-", source).strip("-").lower()
+
+
+def ingest_sources():
+    """Scan known rule files and return the user-authored content found in
+    each: [{source, content, lines}]. Files that are entirely AIM-generated
+    (or absent/empty) are skipped."""
+    cli = _cli()
+    results = []
+    for rel in _ingest_candidates():
+        path = os.path.join(cli.ROOT_DIR, rel)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        content = strip_aim_block(raw)
+        if content:
+            results.append({"source": rel, "content": content,
+                            "lines": len(content.splitlines())})
+    return results
+
+
+def imported_dir():
+    return os.path.join(_cli().AI_CONTEXT_DIR, "imported")
+
+
+def apply_ingest(sources=None):
+    """Persist collected user content into .ai-context/imported/<slug>.md
+    (atomic, one file per source). `aim sync` then re-emits them into every
+    client file. Idempotent: re-running rewrites the same content. Returns
+    the list of written relative paths."""
+    cli = _cli()
+    if sources is None:
+        sources = ingest_sources()
+    out_dir = imported_dir()
+    if sources and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    written = []
+    for s in sources:
+        dest = os.path.join(out_dir, f"{_ingest_slug(s['source'])}.md")
+        tmp = f"{dest}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(s["content"].strip() + "\n")
+        os.replace(tmp, dest)
+        written.append(os.path.relpath(dest, cli.ROOT_DIR).replace("\\", "/"))
+    return written
+
+
+def ingest_emit_payload():
+    """For the LLM-inversion path (`aim ingest --emit`): return raw collected
+    content plus an instruction for the connected agent to restructure it into
+    config.json fields. Keeps AIM zero-dependency (the agent does the parsing)."""
+    sources = ingest_sources()
+    instruction = (
+        "Restructure the rule snippets below into the AIM config at "
+        ".ai-context/config.json: merge coding rules into `conventions`, hard "
+        "constraints into `constraints`, and tool-specific rules into "
+        "`customRules.<client>`. Deduplicate. Then run `aim sync`."
+    )
+    return {"instruction": instruction, "sources": sources}
+
+
+# ==========================================
 # Diagnostics — `aim doctor`
 # ==========================================
 SEVERITY_ORDER = {"high": 3, "medium": 2, "low": 1, "info": 0}

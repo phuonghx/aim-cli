@@ -62,6 +62,13 @@ Re-running `aim init` on an existing workspace will not overwrite your
 customized skills/agents — use `aim init --force` to reinstall (a timestamped
 `.bak` backup is kept).
 
+**Already have rules scattered across files?** Pull your existing CLAUDE.md /
+`.cursorrules` / `.clinerules` / AGENTS.md into AIM in one step:
+```bash
+aim ingest --dry-run     # preview
+aim ingest && aim sync   # consolidate, then re-emit everywhere
+```
+
 ### From a repository checkout (development)
 Run via the included wrappers without installing:
 - `aim.bat` (Windows) / `aim.sh` (Unix-like shells) at the repo root.

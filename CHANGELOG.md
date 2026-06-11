@@ -5,10 +5,27 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-06-11
+## [1.2.0] - 2026-06-11
 
-Roadmap Phase 0 + Phase 1 — the "living context layer" wedge: a context
-layer that keeps itself fresh and closes the correction feedback loop.
+Roadmap Phase 2 — reverse-sync. Removes the biggest adoption barrier: you
+already have rules scattered across CLAUDE.md, .cursorrules, .clinerules, etc.
+
+### Added
+- **`aim ingest`** — scans known rule files (every sync target plus
+  `.clinerules`/`.rules`/`.aider.conf.yml`), collects the hand-written content,
+  and consolidates it into `.ai-context/imported/*.md`. `aim sync` then re-emits
+  it into every client file under one "Imported Project Rules" section.
+  - Strips the AIM `BEGIN/END` managed block and leading frontmatter, so AIM
+    never re-imports its own generated output — `ingest` is safe to re-run
+    (idempotent).
+  - `--dry-run` previews what would be imported without writing.
+  - `--emit` prints the raw content plus an instruction for the connected agent
+    to restructure it into `config.json` (`conventions`/`constraints`/
+    `customRules`) — the zero-dependency "invert the LLM" path.
+
+### Changed
+- `aim sync` now appends consolidated imported rules (from
+  `.ai-context/imported/`) to every generated client file.
 
 ### Added
 - **`aim doctor`** — diagnoses context drift with deterministic, no-LLM checks:
