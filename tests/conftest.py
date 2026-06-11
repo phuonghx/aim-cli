@@ -29,4 +29,9 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(aim_cli, "TIMER_STATE_PATH", str(ai_context / "timer_state.json"))
     monkeypatch.setattr(aim_cli, "TIME_LOG_PATH", str(ai_context / "time_log.json"))
     monkeypatch.setattr(aim_cli, "USERS_PATH", str(ai_context / "users.json"))
+    # Keep the global memory store inside the tmp workspace so tests never
+    # read or write the real ~/.aim/ store.
+    global_dir = root / "global-aim"
+    monkeypatch.setattr(aim_cli, "GLOBAL_AIM_DIR", str(global_dir))
+    monkeypatch.setattr(aim_cli, "GLOBAL_MEMORIES_PATH", str(global_dir / "memories.json"))
     return root

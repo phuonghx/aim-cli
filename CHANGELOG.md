@@ -5,6 +5,36 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-11
+
+Roadmap Phase 0 + Phase 1 — the "living context layer" wedge: a context
+layer that keeps itself fresh and closes the correction feedback loop.
+
+### Added
+- **`aim doctor`** — diagnoses context drift with deterministic, no-LLM checks:
+  stale memories (cross-referenced against git history of the files they
+  mention), broken `@task`/`@doc` references, duplicate/mismatched task IDs
+  (cross-branch merge artifacts), spec drift on done tasks, idle in-progress
+  tasks, and spec coverage. Exits non-zero on actionable findings (CI-friendly).
+  `--mine` filters to your own memories.
+- **Correction loop** — new MCP tool `record_correction(what_was_wrong,
+  correct_approach, refs)` captures a mid-session correction as a memory, so the
+  lesson survives across sessions and syncs to every tool. New MCP tools
+  `review_memory` and `doctor` as well.
+- **Memory lifecycle** — `aim memory edit/rm/review` (the subsystem was
+  previously add/list only). `review` resets a memory's staleness clock.
+- **Real global memory layer** — `-l global` now persists to `~/.aim/memories.json`
+  and is merged into every project (previously the flag was a no-op label).
+
+### Changed
+- Memory records now carry `author` (from `git config user.name`), `reviewedAt`,
+  `status`, and auto-extracted `refs` (file paths / `@`-refs found in the
+  content). These power `aim doctor`; `aim memory list` shows the author.
+- All staleness logic lives in `aim/core.py` behind a `git_commits_since` seam,
+  so it is unit-tested without requiring a real git repo.
+
+---
+
 ## [1.0.0] - 2026-06-11
 
 First stable public release of **AIM** (AI Memory/Mind) — a centralized,

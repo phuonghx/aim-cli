@@ -93,7 +93,36 @@ TOOLS = [
     },
     {
         "name": "list_memories",
-        "description": "List every persistent memory entry (id, content, category, layer, createdAt).",
+        "description": "List every persistent memory entry (id, content, category, layer, author, createdAt, reviewedAt, refs).",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "record_correction",
+        "description": "Capture a mid-session correction so the lesson survives across sessions and tools. Call this whenever the user corrects your approach.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "what_was_wrong": {"type": "string", "description": "The mistaken approach"},
+                "correct_approach": {"type": "string", "description": "What to do instead"},
+                "refs": {"type": "array", "items": {"type": "string"}, "description": "Related file paths"},
+            },
+            "required": ["what_was_wrong", "correct_approach"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "review_memory",
+        "description": "Mark a memory as freshly verified (resets its staleness clock).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "integer"}},
+            "required": ["id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "doctor",
+        "description": "Diagnose context drift: stale memories (vs git history), broken references, duplicate task IDs, spec drift. Returns findings with severity.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
 ]
@@ -141,6 +170,23 @@ def _call_tool(name, arguments):
 
     if name == "list_memories":
         return {"memories": core.load_memories()}
+
+    if name == "record_correction":
+        wrong = (arguments.get("what_was_wrong") or "").strip()
+        right = (arguments.get("correct_approach") or "").strip()
+        if not wrong or not right:
+            raise ValueError("what_was_wrong and correct_approach are required.")
+        new_mem, _memories = core.record_correction(wrong, right, arguments.get("refs"))
+        return new_mem
+
+    if name == "review_memory":
+        reviewed = core.review_memory(arguments.get("id"))
+        if reviewed is None:
+            raise ValueError(f"Memory {arguments.get('id')} not found.")
+        return reviewed
+
+    if name == "doctor":
+        return {"findings": core.run_diagnostics()}
 
     raise ValueError(f"Unknown tool: {name}")
 

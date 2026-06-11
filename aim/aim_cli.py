@@ -65,6 +65,9 @@ TIMER_STATE_PATH = os.path.join(AI_CONTEXT_DIR, "timer_state.json")
 TIME_LOG_PATH = os.path.join(AI_CONTEXT_DIR, "time_log.json")
 USERS_PATH = os.path.join(AI_CONTEXT_DIR, "users.json")
 TEMPLATES_DIR = os.path.join(AI_CONTEXT_DIR, "templates")
+# Global memory store — shared across every project on this machine.
+GLOBAL_AIM_DIR = os.path.join(os.path.expanduser("~"), ".aim")
+GLOBAL_MEMORIES_PATH = os.path.join(GLOBAL_AIM_DIR, "memories.json")
 
 def load_json(path, default):
     """Read a JSON store. A corrupt file is backed up (never silently
@@ -699,10 +702,69 @@ def cmd_memory(args):
         if not memories:
             print("[*] No memories recorded.")
             return
-        print(f"{'ID':<4} {'Category':<12} {'Layer':<10} {'Content':<50}")
-        print("-" * 80)
+        print(f"{'ID':<4} {'Category':<12} {'Layer':<8} {'Author':<14} {'Content':<40}")
+        print("-" * 84)
         for m in memories:
-            print(f"{m['id']:<4} {m['category']:<12} {m['layer']:<10} {m['content'][:48]:<50}")
+            author = (m.get("author") or "-")[:12]
+            print(f"{m['id']:<4} {m['category']:<12} {m['layer']:<8} {author:<14} {m['content'][:38]:<40}")
+
+    elif args.mem_action == "edit":
+        updated = core.update_memory(args.id, content=args.content,
+                                     category=args.category, layer=args.layer)
+        if updated is None:
+            print(f"[-] Memory #{args.id} not found.")
+            sys.exit(1)
+        print(f"[+] Memory #{args.id} updated.")
+
+    elif args.mem_action == "rm":
+        if core.delete_memory(args.id):
+            print(f"[+] Memory #{args.id} deleted.")
+        else:
+            print(f"[-] Memory #{args.id} not found.")
+            sys.exit(1)
+
+    elif args.mem_action == "review":
+        reviewed = core.review_memory(args.id)
+        if reviewed is None:
+            print(f"[-] Memory #{args.id} not found.")
+            sys.exit(1)
+        print(f"[+] Memory #{args.id} marked as reviewed (staleness clock reset).")
+
+# ==========================================
+# 5.5. DOCTOR COMMAND (context health)
+# ==========================================
+def cmd_doctor(args):
+    ensure_directories()
+    author = None
+    if getattr(args, "mine", False):
+        author = _core().current_author()
+        print(f"[*] Showing context-health findings for: {author}\n")
+
+    findings = _core().run_diagnostics(author=author)
+
+    icons = {"high": "HIGH  ", "medium": "MEDIUM", "low": "LOW   ", "info": "INFO  "}
+    print("=========================================")
+    print("        AIM Context Health Report        ")
+    print("=========================================")
+    if not findings:
+        print("[+] No context-drift issues found. Your context layer is healthy.")
+        return
+
+    counts = {}
+    for f in findings:
+        counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+        line = f"{icons.get(f['severity'], f['severity'])}  {f['message']}"
+        print(line)
+        if f.get("fix"):
+            print(f"        -> fix: {f['fix']}")
+
+    summary = ", ".join(f"{counts[s]} {s}" for s in ("high", "medium", "low", "info") if s in counts)
+    print("-" * 41)
+    print(f"Summary: {summary}")
+
+    # Exit non-zero on actionable findings so `aim doctor` works as a CI gate.
+    if any(f["severity"] in ("high", "medium") for f in findings):
+        sys.exit(1)
 
 # ==========================================
 # 6. LOCAL SEARCH COMMAND
@@ -1855,14 +1917,30 @@ def main():
     add_mem.add_argument("content", help="Memory statement")
     add_mem.add_argument("-c", "--category", help="Category (e.g. decision, syntax, pattern)")
     add_mem.add_argument("-l", "--layer", choices=["project", "global"], help="Storage layer")
-    
+
+    edit_mem = mem_sub.add_parser("edit", help="Edit a memory")
+    edit_mem.add_argument("id", type=int, help="Memory ID")
+    edit_mem.add_argument("content", nargs="?", help="New memory statement")
+    edit_mem.add_argument("-c", "--category", help="Update category")
+    edit_mem.add_argument("-l", "--layer", choices=["project", "global"], help="Move to storage layer")
+
+    rm_mem = mem_sub.add_parser("rm", help="Delete a memory")
+    rm_mem.add_argument("id", type=int, help="Memory ID")
+
+    review_mem = mem_sub.add_parser("review", help="Mark a memory as verified (reset staleness clock)")
+    review_mem.add_argument("id", type=int, help="Memory ID")
+
     # search
     search_parser = subparsers.add_parser("search", help="Search across tasks, docs, and memory")
     search_parser.add_argument("query", help="Search query string")
-    
+
     # validate
     subparsers.add_parser("validate", help="Validate links and references health")
-    
+
+    # doctor
+    doctor_parser = subparsers.add_parser("doctor", help="Diagnose context drift (stale memory, broken refs, id clashes)")
+    doctor_parser.add_argument("--mine", action="store_true", help="Only show findings for memories you authored")
+
     # status
     subparsers.add_parser("status", help="Show project readiness summary")
     
@@ -1952,6 +2030,8 @@ def main():
         cmd_search(args)
     elif args.command == "validate":
         cmd_validate(args)
+    elif args.command == "doctor":
+        cmd_doctor(args)
     elif args.command == "status":
         cmd_status(args)
     elif args.command == "browser":
