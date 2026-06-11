@@ -211,12 +211,20 @@ re-push; drift detection.
 
 ## Deliberately deferred (scope discipline)
 
-- **Time-tracking / users / the 3,000-line dashboard** — these serve a
-  project-management identity, not the "context for AI" job. Not cut, but no
-  further investment until the wedge is proven. Open question: which core job
-  does time-tracking serve?
-- **True semantic search** (embeddings) — violates zero-dependency; revisit only
-  as an optional extra.
+- **Time-tracking / users — FROZEN (maintenance-only)** as of 2026-06-11. The
+  open question is resolved: they are kept and supported but get no new
+  investment; team assignment lives on GitHub via `aim github`. See
+  [ADR 0001](decisions/0001-freeze-time-tracking-and-users.md). (Issue #12)
+- **True semantic search / contradiction detection** — shipping as the optional
+  `pip install aim-cli[semantic]` extra (embeddings); the core stays
+  zero-dependency. (Issue #11)
+
+## Status (2026-06-11)
+
+All roadmap phases shipped (v1.0.0 → v1.8.0). Backlog from the AIM Roadmap
+project: #7 (two-way sync), #8 (Project status sync), #9 (Health tab), #10
+(task renumber) are done; #11 (semantic extra) is in progress; #12 (this
+freeze decision) is recorded above.
 
 ## Comparable tools (landscape reference)
 
