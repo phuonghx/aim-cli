@@ -5,6 +5,24 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-06-11
+
+Backlog items from the AIM Roadmap project.
+
+### Added
+- **`aim task renumber <old> <new>`** (#10) — rename a task and rewrite every
+  reference to it (`@task-N` in any task/doc, plus `dependsOn`/parent pointers).
+  Resolves the duplicate/mismatched-id findings from `aim doctor`. Refuses a
+  target id that is already taken.
+
+### Changed
+- **`aim github push --project N`** (#8) now sets each card's Project (v2)
+  **Status** field to match its AIM status (todo→Todo, in-progress/in-review→
+  In Progress, done→Done) — no more manually moving cards. Best-effort; no-op if
+  the project has no Status field.
+
+---
+
 ## [1.5.0] - 2026-06-11
 
 Roadmap Phase 5 (final) — GitHub sync. Projects AIM tasks onto GitHub Issues
