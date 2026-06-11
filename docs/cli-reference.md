@@ -524,9 +524,22 @@ open.
   aim github push --all --project 3
   ```
 
+#### `aim github pull`
+Two-way sync: reconcile AIM tasks **from** their linked GitHub issues. GitHub is
+canonical for issue state (CLOSED→done, reopened→todo) and the issue title; AIM
+stays canonical for acceptance criteria, dependencies, and spec links.
+* **Arguments:** `id` (optional) — a single task; omit (or `--all`) for every linked task.
+* **Options:** `--dry-run` — preview changes (drift) without writing.
+* **Example:**
+  ```bash
+  aim github pull --all --dry-run    # see what GitHub would change
+  aim github pull --all              # apply it
+  ```
+
 #### `aim github status`
 Show each task and its linked GitHub issue (or `-` if not pushed).
-* **Usage:** `aim github status`
+* **Options:** `--check` — fetch live issues and report drift vs AIM.
+* **Usage:** `aim github status [--check]`
 
 #### `aim github create-project`
 Create a GitHub Project (v2) owned by the repo owner.

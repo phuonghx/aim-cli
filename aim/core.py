@@ -753,6 +753,55 @@ def create_project(title):
     return json.loads(out)
 
 
+# ---- Two-way sync: pull GitHub issue changes back into AIM (issue #7) ----
+ISSUE_TITLE_PREFIX = re.compile(r"^\[AIM-\d+\]\s*")
+
+
+def _read_issue(issue):
+    return json.loads(_gh(["issue", "view", str(issue), "--json", "number,title,state"]))
+
+
+def issue_to_updates(task, issue_data):
+    """Compute the AIM-side changes a GitHub issue implies. Conflict policy:
+    GitHub is canonical for state (open/closed) and the issue title; AIM stays
+    canonical for acceptance criteria, dependencies, and spec links (untouched)."""
+    changes = {}
+    new_title = ISSUE_TITLE_PREFIX.sub("", issue_data.get("title", "")).strip()
+    if new_title and new_title != task.get("title"):
+        changes["title"] = new_title
+    state = (issue_data.get("state") or "").upper()
+    current = task.get("status", "todo").lower()
+    if state == "CLOSED" and current != "done":
+        changes["status"] = "done"
+    elif state == "OPEN" and current == "done":
+        changes["status"] = "todo"
+    return changes
+
+
+def pull_task(task_id, dry_run=False):
+    """Reconcile one task from its linked GitHub issue. Returns
+    {taskId, issue, changes}. With dry_run, computes changes without writing
+    (this is also how drift is detected)."""
+    cli = _cli()
+    task = get_task(task_id)
+    if task is None:
+        raise RuntimeError(f"Task {task_id} not found.")
+    issue = task.get("githubIssue")
+    if not issue:
+        return {"taskId": task["id"], "issue": None, "changes": {}}
+    changes = issue_to_updates(task, _read_issue(issue))
+    if changes and not dry_run:
+        task.update(changes)
+        cli.write_task_file(task)
+    return {"taskId": task["id"], "issue": issue, "changes": changes}
+
+
+def pull_all(dry_run=False):
+    """Reconcile every linked task from GitHub. Returns per-task results."""
+    tasks, _errors = load_tasks()
+    return [pull_task(t["id"], dry_run=dry_run) for t in tasks if t.get("githubIssue")]
+
+
 # AIM status -> GitHub Project (v2) "Status" single-select option name.
 STATUS_TO_PROJECT_OPTION = {
     "todo": "Todo",
