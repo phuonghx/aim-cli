@@ -5,6 +5,23 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-11
+
+Roadmap Phase 5 (final) — GitHub sync. Projects AIM tasks onto GitHub Issues
+and Projects so a team gets a familiar board; AIM stays the agent's working
+layer. Zero-dependency: shells out to the `gh` CLI (no OAuth libraries).
+
+### Added
+- **`aim github push [id] [--all] [--project N]`** — create/update a GitHub
+  issue per task (idempotent via a stored `**GitHub Issue:**` number). Maps
+  done → closed, otherwise open; optionally adds issues to a Project (v2).
+- **`aim github status`** — show each task's linked issue.
+- **`aim github create-project <title>`** — create a GitHub Project (v2) for the
+  repo owner.
+- Tasks carry a `githubIssue` field (a `**GitHub Issue:**` line).
+
+---
+
 ## [1.4.0] - 2026-06-11
 
 Roadmap Phase 4 — spec-driven development. Makes the existing `spec`/`plan`

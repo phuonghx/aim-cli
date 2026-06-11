@@ -321,6 +321,7 @@ def parse_task_file(path):
         "id": "", "title": "", "status": "todo", "priority": "medium",
         "assignee": "unassigned", "timeSpent": 0,
         "parent": None, "dependsOn": [], "labels": [], "spec": "", "plan": "",
+        "githubIssue": None,
         "description": "", "ac": [], "notes": "", "extraSections": []
     }
 
@@ -362,6 +363,9 @@ def parse_task_file(path):
         elif line.startswith("**Plan:**"):
             val = line.replace("**Plan:**", "").strip()
             meta["plan"] = val if val and val != "none" else ""
+        elif line.startswith("**GitHub Issue:**"):
+            val = line.replace("**GitHub Issue:**", "").replace("#", "").strip()
+            meta["githubIssue"] = int(val) if val.isdigit() else None
 
     for header, body in sections:
         key = header.strip().lower()
@@ -404,6 +408,7 @@ def render_task_content(meta):
     labels_str = f"**Labels:** {', '.join(meta['labels'])}" if meta.get("labels") else "**Labels:** none"
     spec_str = f"**Spec:** {meta['spec']}" if meta.get("spec") else "**Spec:** none"
     plan_str = f"**Plan:** {meta['plan']}" if meta.get("plan") else "**Plan:** none"
+    gh_str = f"**GitHub Issue:** #{meta['githubIssue']}" if meta.get("githubIssue") else "**GitHub Issue:** none"
 
     # Preserve user notes; only the "Last updated" stamp line is managed.
     notes = meta.get("notes", "")
@@ -429,6 +434,7 @@ def render_task_content(meta):
 {labels_str}
 {spec_str}
 {plan_str}
+{gh_str}
 
 ## Description
 {meta['description']}
@@ -922,6 +928,54 @@ def cmd_validate(args):
     else:
         print(f"[-] Found {total} issue(s).")
         sys.exit(1)
+
+# ==========================================
+# 7.6. GITHUB SYNC COMMANDS
+# ==========================================
+def cmd_github(args):
+    ensure_directories()
+    core = _core()
+    if not core.github_available():
+        print("[-] GitHub CLI (gh) not found or not authenticated.")
+        print("    Install gh (https://cli.github.com) and run `gh auth login`.")
+        sys.exit(1)
+
+    if args.github_action == "create-project":
+        try:
+            data = core.create_project(args.title)
+        except RuntimeError as e:
+            print(f"[-] {e}")
+            sys.exit(1)
+        print(f"[+] Created project #{data.get('number')}: {data.get('url')}")
+        print(f"[*] Push tasks into it with: aim github push --all --project {data.get('number')}")
+
+    elif args.github_action == "push":
+        try:
+            if args.id:
+                results = [core.push_task(args.id, project=args.project)]
+            else:
+                results = core.push_all(project=args.project)
+        except RuntimeError as e:
+            print(f"[-] {e}")
+            sys.exit(1)
+        if not results:
+            print("[*] No tasks to push.")
+            return
+        for r in results:
+            print(f"[+] TASK-{r['taskId']} -> issue #{r['issue']} ({r['action']}, status={r['status']})")
+        if args.project:
+            print(f"[+] Linked issues to project #{args.project}.")
+
+    elif args.github_action == "status":
+        rows = core.github_status()
+        if not rows:
+            print("[*] No tasks found.")
+            return
+        print(f"{'Task':<6} {'Issue':<8} {'Status':<12} {'Title'}")
+        print("-" * 70)
+        for r in rows:
+            issue = f"#{r['issue']}" if r["issue"] else "-"
+            print(f"{r['taskId']:<6} {issue:<8} {r['status']:<12} {r['title'][:40]}")
 
 # ==========================================
 # 7.5. SPEC COMMANDS (spec-driven development)
@@ -2093,6 +2147,17 @@ def main():
     import_spec_p.add_argument("--name", help="Override the spec name (default: directory name)")
     spec_sub.add_parser("coverage", help="Show spec-link coverage across tasks")
 
+    # github
+    github_parser = subparsers.add_parser("github", help="Sync tasks to GitHub Issues / Projects (via the gh CLI)")
+    github_sub = github_parser.add_subparsers(dest="github_action", required=True)
+    gh_push = github_sub.add_parser("push", help="Create/update a GitHub issue per task (idempotent)")
+    gh_push.add_argument("id", type=int, nargs="?", help="Task ID (omit, or use --all, to push every task)")
+    gh_push.add_argument("--all", action="store_true", help="Push every task (default when no ID is given)")
+    gh_push.add_argument("--project", type=int, help="Also add issues to this Project (v2) number")
+    github_sub.add_parser("status", help="Show task <-> GitHub issue linkage")
+    gh_proj = github_sub.add_parser("create-project", help="Create a GitHub Project (v2) for this repo")
+    gh_proj.add_argument("title", help="Project title")
+
     # ingest
     ingest_parser = subparsers.add_parser("ingest", help="Import existing hand-written rule files (CLAUDE.md, .cursorrules, ...) into AIM")
     ingest_parser.add_argument("--dry-run", action="store_true", help="Preview what would be imported without writing")
@@ -2193,6 +2258,8 @@ def main():
         cmd_validate(args)
     elif args.command == "spec":
         cmd_spec(args)
+    elif args.command == "github":
+        cmd_github(args)
     elif args.command == "ingest":
         cmd_ingest(args)
     elif args.command == "doctor":
