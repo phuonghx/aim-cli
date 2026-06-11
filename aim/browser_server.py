@@ -175,6 +175,11 @@ class AIMBrowserHandler(http.server.BaseHTTPRequestHandler):
             self.send_json(core.load_memories())
             return
 
+        # 5.05. Doctor API (context-drift findings)
+        elif parsed_url.path == "/api/doctor":
+            self.send_json(core.run_diagnostics())
+            return
+
         # 5.1. List Users API
         elif parsed_url.path == "/api/users":
             self.send_json(load_users())

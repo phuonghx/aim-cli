@@ -1178,6 +1178,7 @@
         <button class="tab-btn" id="tab-memory" onclick="switchTab('memory')"><i class="ph ph-brain"></i> Memory</button>
         <button class="tab-btn" id="tab-users" onclick="switchTab('users')"><i class="ph ph-users"></i> Users</button>
         <button class="tab-btn" id="tab-graph" onclick="switchTab('graph')"><i class="ph ph-git-network"></i> Graph</button>
+        <button class="tab-btn" id="tab-health" onclick="switchTab('health')"><i class="ph ph-stethoscope"></i> Health</button>
     </nav>
 
     <main>
@@ -1424,6 +1425,21 @@
                 </div>
             </div>
         </div>
+
+        <!-- HEALTH TAB (aim doctor) -->
+        <div id="healthContent" class="tab-content">
+            <div class="glass-panel" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; color: #ffffff;">Context Health</h2>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Context-drift findings from <code>aim doctor</code> — stale memories, broken references, duplicate IDs, and spec drift.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="fetchDoctor()">Re-scan</button>
+                </div>
+                <div id="healthSummary" style="display: flex; gap: 0.75rem; flex-wrap: wrap;"></div>
+                <div id="healthFindings" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
+            </div>
+        </div>
     </main>
 
     <!-- SEARCH MODAL (COMMAND PALETTE STYLE) -->
@@ -1656,6 +1672,7 @@
             if (tabName === 'memory') fetchMemories();
             if (tabName === 'users') fetchUsers();
             if (tabName === 'graph') fetchGraphData();
+            if (tabName === 'health') fetchDoctor();
         }
 
         // --- SEARCH COMMAND PALETTE MODAL ---
@@ -2254,6 +2271,59 @@
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        // --- HEALTH (aim doctor) ---
+        async function fetchDoctor() {
+            const summary = document.getElementById('healthSummary');
+            const list = document.getElementById('healthFindings');
+            list.innerHTML = '<div style="color:var(--text-muted); padding:1rem 0;">Scanning…</div>';
+            summary.innerHTML = '';
+            try {
+                const res = await fetch('/api/doctor');
+                const findings = await res.json();
+                renderDoctor(findings);
+            } catch (err) {
+                console.error(err);
+                list.innerHTML = '<div style="color:var(--danger); padding:1rem 0;">Failed to run diagnostics.</div>';
+            }
+        }
+
+        function renderDoctor(findings) {
+            const summary = document.getElementById('healthSummary');
+            const list = document.getElementById('healthFindings');
+            const colors = { high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--text-muted)', info: 'var(--primary)' };
+
+            const counts = { high: 0, medium: 0, low: 0, info: 0 };
+            findings.forEach(f => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+
+            if (!findings.length) {
+                summary.innerHTML = '<span class="health-val-badge badge-success">Healthy — no context drift</span>';
+                list.innerHTML = '<div style="color:var(--text-muted); padding:1rem 0;">Every memory, reference, task and spec link checks out.</div>';
+                return;
+            }
+
+            summary.innerHTML = ['high', 'medium', 'low', 'info']
+                .filter(s => counts[s])
+                .map(s => `<span class="health-val-badge" style="background:rgba(255,255,255,0.04); border:1px solid ${colors[s]}; color:${colors[s]};">${counts[s]} ${s}</span>`)
+                .join('');
+
+            list.innerHTML = '';
+            findings.forEach(f => {
+                const card = document.createElement('div');
+                card.className = 'sync-file-item';
+                card.style.cssText = 'flex-direction:column; align-items:flex-start; gap:0.35rem; padding:0.75rem 1rem; border-left:3px solid ' + (colors[f.severity] || 'var(--border)') + ';';
+                const fix = f.fix ? `<div style="font-size:0.8rem; color:var(--text-muted); font-family:monospace;">fix: ${esc(f.fix)}</div>` : '';
+                card.innerHTML = `
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                        <span class="health-val-badge" style="color:${colors[f.severity]}; border:1px solid ${colors[f.severity]}; background:none; font-size:0.65rem; text-transform:uppercase;">${esc(f.severity)}</span>
+                        <span style="font-size:0.72rem; color:var(--text-muted);">${esc(f.kind)}</span>
+                    </div>
+                    <div style="color:#ffffff; font-size:0.9rem;">${esc(f.message)}</div>
+                    ${fix}
+                `;
+                list.appendChild(card);
+            });
         }
 
         // --- ACTIONS ---
