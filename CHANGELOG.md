@@ -5,6 +5,20 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-06-11
+
+### Added
+- **Optional `[semantic]` extra** (#11) — `pip install aim-cli[semantic]` adds
+  embeddings (sentence-transformers) that power:
+  - `aim search --semantic` — rank tasks/docs/memories by meaning, not substring.
+  - an `aim doctor` **similar-memory** check — flags highly-similar memory pairs
+    as possible duplicates/contradictions to review.
+  The core stays strictly zero-dependency: both features detect the extra at
+  runtime and degrade gracefully (semantic search falls back to keyword search;
+  the doctor check is skipped) when it is not installed.
+
+---
+
 ## [1.8.0] - 2026-06-11
 
 ### Added
