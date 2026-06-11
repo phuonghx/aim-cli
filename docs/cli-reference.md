@@ -11,6 +11,7 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 2. [Task Management](#2-task-management)
    * [`aim task create`](#aim-task-create)
    * [`aim task list`](#aim-task-list)
+   * [`aim task next`](#aim-task-next)
    * [`aim task view`](#aim-task-view)
    * [`aim task edit`](#aim-task-edit)
 3. [User & Team Management](#3-user--team-management)
@@ -91,6 +92,7 @@ Create a new task with optional parent relationships, tags, and cross-reference 
   * `-p`, `--priority`: Task priority (`low`, `medium`, `high`, `urgent`). Default: `medium`.
   * `-a`, `--assignee`: Project username to assign this task. Default: `unassigned`.
   * `--parent`: Parent task ID (creates subtask relationship).
+  * `--depends-on`: Prerequisite task ID this task is blocked by (repeatable).
   * `-l`, `--label`: Categorization tag/label (repeatable for multiple labels).
   * `--spec`: Linked specification doc path (e.g. `@doc/sdd/auth.md`).
   * `--plan`: Linked implementation plan doc path (e.g. `@doc/plans/auth-plan.md`).
@@ -114,6 +116,17 @@ Display all active tasks rendered in an indented tree view according to parent-c
   aim task list
   ```
 
+### `aim task next`
+Print the next actionable task — the highest-priority (then lowest-id) task that
+is not done, not blocked, and whose dependencies are all done. The deterministic,
+no-LLM equivalent of "what should I work on next"; also available to agents as the
+MCP `next_task` tool.
+* **Usage:** `aim task next`
+* **Example:**
+  ```bash
+  aim task next
+  ```
+
 ### `aim task view`
 View the full markdown content of a specific task.
 * **Arguments:**
@@ -133,6 +146,8 @@ Update task properties, mark acceptance criteria, or manage labels.
   * `--add-ac`: Add a new acceptance criteria item.
   * `--check-ac`: Mark an AC index as completed (1-based index).
   * `--parent`: Update parent task ID (set to `0` to detach and make a root task).
+  * `--add-dep`: Add a prerequisite task ID, with cycle detection (repeatable).
+  * `--remove-dep`: Remove a prerequisite task ID (repeatable).
   * `--add-label`: Add a new label tag.
   * `--remove-label`: Remove an existing label tag.
   * `--spec`: Update linked specification document path.

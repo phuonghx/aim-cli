@@ -136,9 +136,13 @@ def get_task(task_id):
     return cli.parse_task_file(path)
 
 
+PRIORITY_ORDER = {"urgent": 3, "high": 2, "medium": 1, "low": 0}
+ACTIONABLE_BLOCKED = {"done", "blocked"}
+
+
 def create_task(title, description="", priority="medium", status="todo",
                 assignee="unassigned", parent=None, labels=None, spec="",
-                plan="", ac=None):
+                plan="", ac=None, depends_on=None):
     """Create a task with a race-safe ID. Returns the task meta."""
     cli = _cli()
     meta = {
@@ -148,6 +152,7 @@ def create_task(title, description="", priority="medium", status="todo",
         "priority": priority,
         "assignee": assignee,
         "parent": int(parent) if parent else None,
+        "dependsOn": [int(d) for d in (depends_on or [])],
         "labels": labels or [],
         "spec": spec,
         "plan": plan,
@@ -157,6 +162,62 @@ def create_task(title, description="", priority="medium", status="todo",
     }
     cli.create_task_file(meta)
     return meta
+
+
+def create_tasks(specs):
+    """Batch-create tasks (used by the PRD-decomposition MCP flow). Each spec
+    is {title, description?, priority?, ac?, labels?, key?, dependsOn?}, where
+    dependsOn may reference existing task ids (int) OR a `key` string of an
+    earlier task in this same batch. Two passes so within-batch deps resolve.
+    Returns the created task metas."""
+    cli = _cli()
+    created, key_to_id = [], {}
+    for s in specs:
+        meta = create_task(
+            s["title"],
+            description=s.get("description", ""),
+            priority=s.get("priority", "medium"),
+            labels=s.get("labels"),
+            ac=s.get("ac"),
+        )
+        created.append(meta)
+        if s.get("key"):
+            key_to_id[s["key"]] = meta["id"]
+
+    for s, meta in zip(specs, created):
+        deps = []
+        for d in (s.get("dependsOn") or []):
+            if isinstance(d, bool):
+                continue
+            if isinstance(d, int):
+                deps.append(d)
+            elif isinstance(d, str):
+                if d in key_to_id:
+                    deps.append(key_to_id[d])
+                elif d.isdigit():
+                    deps.append(int(d))
+        if deps:
+            full = get_task(meta["id"])
+            full["dependsOn"] = deps
+            cli.write_task_file(full)
+            meta["dependsOn"] = deps
+    return created
+
+
+def next_task():
+    """Return the next actionable task: highest priority (then lowest id) among
+    not-done, not-blocked tasks whose dependencies are all done. None if none."""
+    tasks, _errors = load_tasks()
+    done = {t["id"] for t in tasks if t.get("status", "").lower() == "done"}
+    candidates = [
+        t for t in tasks
+        if t.get("status", "todo").lower() not in ACTIONABLE_BLOCKED
+        and all(d in done for d in t.get("dependsOn", []))
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: (-PRIORITY_ORDER.get(t.get("priority", "medium").lower(), 1), t["id"]))
+    return candidates[0]
 
 
 # ==========================================

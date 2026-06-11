@@ -5,6 +5,30 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-11
+
+Roadmap Phase 3 — task intelligence. Takes the deterministic parts of an
+AI task manager (dependencies, "what's next", PRD decomposition) without
+adding any LLM dependency.
+
+### Added
+- **Task dependencies** — tasks carry `dependsOn` (a `**Depends On:**` line in
+  the file). `aim task create --depends-on N` and `aim task edit --add-dep N /
+  --remove-dep N`, with cycle detection.
+- **`aim task next`** — returns the next actionable task: highest priority
+  (then lowest id) among not-done, not-blocked tasks whose dependencies are all
+  done. Also exposed as the MCP tool `next_task`.
+- **PRD decomposition (LLM inversion)** — MCP prompt `decompose_prd` instructs
+  the connected agent to break a PRD into tasks and create them via the new
+  batch tool **`create_tasks`**, which resolves within-batch dependency chains
+  via per-task `key` references. The MCP server now advertises the `prompts`
+  capability (`prompts/list`, `prompts/get`).
+
+### Changed
+- `create_task` MCP tool accepts `dependsOn`.
+
+---
+
 ## [1.2.0] - 2026-06-11
 
 Roadmap Phase 2 — reverse-sync. Removes the biggest adoption barrier: you
