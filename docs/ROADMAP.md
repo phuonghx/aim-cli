@@ -8,6 +8,29 @@
 > **context drift** — stale rules and corrections that never get captured, which
 > account for the majority of real-world AI-assistant failures.
 
+## Product decisions (locked 2026-06-11)
+
+These four rulings shape every phase below:
+
+1. **Core user = small team (2–5 devs)**, not solo. Consequence: memory carries
+   an `author` (from `git config user.name`, no permissions — git is the audit
+   log); cross-branch task-ID collisions are a real risk handled pragmatically
+   (a `doctor` check + `aim task renumber`, *not* a new ID scheme); GitHub sync
+   becomes a first-class phase (teams live on GitHub).
+2. **Zero-dependency core + optional extras.** `pip install aim-cli` runs every
+   core feature with stdlib only. `pip install aim-cli[semantic]` later adds
+   embeddings so `doctor` can detect *contradiction* (not just "file changed")
+   and enable true semantic search. No extra is ever required for core.
+3. **Time-tracking / users / dashboard = keep simple, maintenance-only** until
+   the wedge is proven. Not cut. The future investment there is **GitHub
+   Projects sync** (Phase 5), not bespoke PM features.
+4. **Phase 1 is a real validation gate.** If `aim doctor` dogfooded on real
+   repos surfaces no useful warnings, we **stop and re-orient** — we do not
+   build Phases 2–5 on an unproven wedge.
+
+**Everything that shells out (git, gh) keeps AIM zero-dependency** — the same
+trick that makes `doctor` work also makes GitHub sync work without OAuth libs.
+
 This roadmap supersedes the previous one (a lint/SSE/3D-graph plan that did not
 match this direction). Each phase lands in `aim/core.py` (pure, unit-tested via
 the `workspace` fixture) and is surfaced across all three frontends: CLI, the
@@ -22,7 +45,8 @@ MCP server, and the dashboard.
 ├─ Phase 1  WEDGE: aim doctor + correction loop   (#1 + #2)   ← VALIDATION GATE
 ├─ Phase 2  aim ingest (reverse-sync)             (#5)        adoption unlock
 ├─ Phase 3  Task intelligence: deps + next_task   (#3)        deterministic, zero-dep
-└─ Phase 4  Spec traceability + spec-kit import   (#4)        close spec→task→code loop
+├─ Phase 4  Spec traceability + spec-kit import   (#4)        close spec→task→code loop
+└─ Phase 5  GitHub Issues / Projects sync                     team's display layer
 ```
 
 **Strategic principle — invert the LLM dependency.** AIM stays zero-dependency
@@ -41,15 +65,19 @@ when a memory was last verified.
 
 **Data model** (`add_memory` in `aim/core.py`): add `reviewedAt` (defaults to
 `createdAt`), `refs` (file paths / `@`-refs extracted from content), `status`
-(`active` / `archived`).
+(`active` / `archived`), and **`author`** (from `git config user.name`, falling
+back to the OS user). `author` is required up front because retrofitting
+ownership onto existing memories later is lossy — it is the one team-readiness
+hook we bake in now.
 
 **Build**
 - `core.update_memory(id, ...)`, `core.delete_memory(id)`, `core.review_memory(id)` (resets `reviewedAt`).
 - `core.extract_refs(text)` — extract `@task-N`, `@doc/...`, and source paths (`aim/foo.py`, `src/**`). Pure, easily tested.
+- `core.current_author()` — `git config user.name` via the same git seam, OS-user fallback.
 - Real `global` layer: read/write `~/.aim/memories.json`, merged on list.
 - Surfaces: CLI `aim memory edit/rm/review`; MCP `update_memory`/`delete_memory`/`review_memory`; dashboard edit/delete in the existing memory grid.
 
-**Tests** memory edit/delete round-trip; `extract_refs` on non-ASCII + paths; global-layer merge.
+**Tests** memory edit/delete round-trip; `extract_refs` on non-ASCII + paths; global-layer merge; `author` capture with git seam monkeypatched.
 
 ---
 
@@ -66,8 +94,15 @@ The capability no competitor owns, aimed squarely at context drift.
 | Memory unreviewed | `now - reviewedAt > 90d` (configurable) | low |
 | Done task, spec changed after | spec/plan doc modified after the task's last update | medium |
 | In-progress task idle | no update in > N days | low |
+| Duplicate / mismatched task IDs | two files claim the same id, or filename ≠ header (cross-branch merge artifact) | high |
 | Orphans | doc/task with no inbound refs | info |
 | Spec coverage | tasks without a spec link (ties to Phase 4) | info |
+
+**Team mode (small team).** `aim doctor --mine` filters stale-memory warnings to
+the current `author`, so each dev is nudged about *their own* context, not spammed
+with the whole team's. `aim task renumber <old> <new>` resolves an ID collision and
+rewrites every `@task-N` reference pointing at it — far cheaper than changing the
+ID scheme.
 
 **Key design:** isolate a seam `core.git_commits_since(path, iso_ts)` (shells out
 to `git`; returns empty if not a git repo / git absent) so checks are unit-testable
@@ -142,12 +177,37 @@ GitHub spec-kit rather than reinventing it.
 
 ---
 
+## Phase 5 — GitHub Issues / Projects sync · effort: M–L · team display layer
+
+Small teams live on GitHub. Rather than building bespoke multi-user PM features,
+project AIM tasks onto GitHub Issues + Projects. **Role split: GitHub is the
+team's display/collaboration layer; AIM stays the agent's working layer.**
+
+**Zero-dependency via `gh`.** Shell out to the GitHub CLI (same pattern as the
+`git` seam) — no OAuth libraries, no token handling in AIM.
+
+**Build (one-way MVP first, then two-way)**
+- `aim task push-github [id|--all]` — create/update an Issue per task; map status → Issue state + a Project status field; store `githubIssue: #42` in task metadata so updates are idempotent.
+- `aim github status` — show which tasks are linked / drifted from their Issue.
+- Later: two-way pull (Issue edits → task files), label/assignee mapping, and a `doctor` check for AIM↔GitHub drift.
+
+**Risks** `gh` must be installed + authenticated (detect and guide, like the
+installers do for Python); mapping AIM's richer task model (subtasks, deps, AC)
+onto Issues is lossy — decide what is canonical per field (proposal: AIM canonical
+for AC/deps, GitHub canonical for discussion/assignment).
+
+**Tests** task↔Issue field mapping (pure function, `gh` mocked); idempotent
+re-push; drift detection.
+
+---
+
 ## Sequencing rationale
 
 - **0 before 1** — doctor needs `reviewedAt`/`refs`.
 - **1 is the gate** — cheap, read-only, validates the entire positioning. Do not build 2–4 until 1 proves the wedge.
 - **2 before 3–4** — ingest grows the install base, giving doctor and deps real data to work on.
 - **3 before 4** — spec-import (4) creates tasks; dependency/next logic (3) is what makes those tasks valuable.
+- **5 last** — GitHub sync should project a *mature* task model (deps, spec links from 3–4); syncing a thin model first would lock in a lossy mapping.
 
 ## Deliberately deferred (scope discipline)
 
