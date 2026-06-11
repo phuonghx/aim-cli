@@ -41,9 +41,9 @@ def test_tools_list_shapes():
     resp = rpc("tools/list")
     tools = resp["result"]["tools"]
     names = {t["name"] for t in tools}
-    assert names == {"list_tasks", "get_task", "create_task", "search",
-                     "add_memory", "list_memories", "record_correction",
-                     "review_memory", "doctor"}
+    assert names == {"list_tasks", "get_task", "create_task", "create_tasks",
+                     "next_task", "search", "add_memory", "list_memories",
+                     "record_correction", "review_memory", "doctor"}
     for t in tools:
         assert "description" in t
         assert t["inputSchema"]["type"] == "object"

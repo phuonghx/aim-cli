@@ -60,12 +60,45 @@ TOOLS = [
                 "priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"]},
                 "assignee": {"type": "string"},
                 "parent": {"type": "integer", "description": "Parent task ID (subtask)"},
+                "dependsOn": {"type": "array", "items": {"type": "integer"}, "description": "Prerequisite task IDs"},
                 "labels": {"type": "array", "items": {"type": "string"}},
                 "ac": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria items"},
             },
             "required": ["title"],
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "create_tasks",
+        "description": "Batch-create tasks (e.g. from a decomposed PRD). Each item: {title, description?, priority?, ac?, labels?, key?, dependsOn?}. dependsOn entries may be existing task IDs (int) or a `key` of an earlier task in the same batch (string), so dependency chains can be created in one call.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "description": {"type": "string"},
+                            "priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"]},
+                            "ac": {"type": "array", "items": {"type": "string"}},
+                            "labels": {"type": "array", "items": {"type": "string"}},
+                            "key": {"type": "string", "description": "Local handle for within-batch dependsOn references"},
+                            "dependsOn": {"type": "array", "description": "Existing task IDs (int) or batch keys (str)"},
+                        },
+                        "required": ["title"],
+                    },
+                },
+            },
+            "required": ["tasks"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "next_task",
+        "description": "Return the next actionable task: highest priority (then lowest id) among not-done, not-blocked tasks whose dependencies are all done. Call this to decide what to work on next.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "search",
@@ -128,6 +161,37 @@ TOOLS = [
 ]
 
 
+DECOMPOSE_PRD_INSTRUCTION = (
+    "Decompose the following PRD into a set of small, independently verifiable "
+    "AIM tasks. For each task provide: title, a short description, acceptance "
+    "criteria (ac), a priority, and dependsOn (prerequisite tasks). Give each "
+    "task a short `key` and reference those keys in later tasks' dependsOn so "
+    "the dependency chain is explicit. Then call the `create_tasks` tool with "
+    "the full list in dependency order."
+)
+
+PROMPTS = [
+    {
+        "name": "decompose_prd",
+        "description": "Break a PRD / feature description into AIM tasks with dependencies, then create them via create_tasks.",
+        "arguments": [
+            {"name": "prd", "description": "The PRD or feature description text", "required": True},
+        ],
+    },
+]
+
+
+def _get_prompt(name, arguments):
+    if name != "decompose_prd":
+        raise ValueError(f"Unknown prompt: {name}")
+    prd = (arguments or {}).get("prd", "")
+    text = f"{DECOMPOSE_PRD_INSTRUCTION}\n\nPRD:\n{prd}"
+    return {
+        "description": "Decompose a PRD into AIM tasks",
+        "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+    }
+
+
 def _call_tool(name, arguments):
     """Execute a tool. Returns a JSON-serializable result, or raises ValueError."""
     if name == "list_tasks":
@@ -152,7 +216,18 @@ def _call_tool(name, arguments):
             parent=arguments.get("parent"),
             labels=arguments.get("labels"),
             ac=arguments.get("ac"),
+            depends_on=arguments.get("dependsOn"),
         )
+
+    if name == "create_tasks":
+        specs = arguments.get("tasks") or []
+        if not specs:
+            raise ValueError("tasks (a non-empty list) is required.")
+        return {"created": core.create_tasks(specs)}
+
+    if name == "next_task":
+        t = core.next_task()
+        return t if t is not None else {"message": "No actionable task."}
 
     if name == "search":
         query = (arguments.get("query") or "").strip()
@@ -211,7 +286,7 @@ def handle_message(msg):
         client_version = params.get("protocolVersion") or PROTOCOL_VERSION
         return _result(msg_id, {
             "protocolVersion": client_version,
-            "capabilities": {"tools": {}},
+            "capabilities": {"tools": {}, "prompts": {}},
             "serverInfo": {"name": "aim-cli", "version": __version__},
         })
 
@@ -223,6 +298,15 @@ def handle_message(msg):
 
     if method == "tools/list":
         return _result(msg_id, {"tools": TOOLS})
+
+    if method == "prompts/list":
+        return _result(msg_id, {"prompts": PROMPTS})
+
+    if method == "prompts/get":
+        try:
+            return _result(msg_id, _get_prompt(params.get("name", ""), params.get("arguments")))
+        except ValueError as e:
+            return _error(msg_id, -32602, str(e))
 
     if method == "tools/call":
         name = params.get("name", "")

@@ -111,7 +111,7 @@ claude mcp add aim -- aim mcp
 { "mcpServers": { "aim": { "command": "aim", "args": ["mcp"] } } }
 ```
 
-Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`, `record_correction`, `review_memory`, `doctor`. Zero external dependencies — pure stdlib JSON-RPC over stdio.
+Exposed tools: `list_tasks`, `get_task`, `create_task`, `create_tasks`, `next_task`, `search`, `add_memory`, `list_memories`, `record_correction`, `review_memory`, `doctor`. Plus a `decompose_prd` prompt that turns a PRD into dependency-ordered tasks via `create_tasks`. Zero external dependencies — pure stdlib JSON-RPC over stdio.
 
 When the user corrects the agent mid-session, the agent can call
 `record_correction(...)` to persist the lesson as a memory — it then syncs to

@@ -320,7 +320,7 @@ def parse_task_file(path):
     meta = {
         "id": "", "title": "", "status": "todo", "priority": "medium",
         "assignee": "unassigned", "timeSpent": 0,
-        "parent": None, "labels": [], "spec": "", "plan": "",
+        "parent": None, "dependsOn": [], "labels": [], "spec": "", "plan": "",
         "description": "", "ac": [], "notes": "", "extraSections": []
     }
 
@@ -350,6 +350,9 @@ def parse_task_file(path):
         elif line.startswith("**Parent Task:**"):
             val = line.replace("**Parent Task:**", "").strip()
             meta["parent"] = int(val) if val.isdigit() else None
+        elif line.startswith("**Depends On:**"):
+            val = line.replace("**Depends On:**", "").strip()
+            meta["dependsOn"] = [int(x) for x in re.findall(r"\d+", val)] if val and val != "none" else []
         elif line.startswith("**Labels:**"):
             val = line.replace("**Labels:**", "").strip()
             meta["labels"] = [x.strip() for x in val.split(",")] if val and val != "none" else []
@@ -396,6 +399,8 @@ def render_task_content(meta):
     time_spent = meta.get("timeSpent", 0)
 
     parent_str = f"**Parent Task:** {meta['parent']}" if meta.get("parent") else "**Parent Task:** none"
+    depends_str = (f"**Depends On:** {', '.join(str(d) for d in meta['dependsOn'])}"
+                   if meta.get("dependsOn") else "**Depends On:** none")
     labels_str = f"**Labels:** {', '.join(meta['labels'])}" if meta.get("labels") else "**Labels:** none"
     spec_str = f"**Spec:** {meta['spec']}" if meta.get("spec") else "**Spec:** none"
     plan_str = f"**Plan:** {meta['plan']}" if meta.get("plan") else "**Plan:** none"
@@ -420,6 +425,7 @@ def render_task_content(meta):
 **Assignee:** {meta['assignee']}
 **Time Spent:** {time_spent} seconds
 {parent_str}
+{depends_str}
 {labels_str}
 {spec_str}
 {plan_str}
@@ -489,6 +495,31 @@ def detect_parent_cycle(task_id, new_parent_id):
             return True
     return current is not None  # pre-existing cycle among ancestors
 
+
+def detect_dependency_cycle(task_id, new_deps):
+    """Return True if making task_id depend on new_deps would create a cycle
+    in the dependency graph (task_id reachable from any new dependency)."""
+    if not new_deps:
+        return False
+    if task_id in new_deps:
+        return True
+    seen = set()
+    stack = list(new_deps)
+    while stack:
+        cur = stack.pop()
+        if cur == task_id:
+            return True
+        if cur in seen:
+            continue
+        seen.add(cur)
+        path = os.path.join(TASKS_DIR, f"task-{cur}.md")
+        if os.path.exists(path):
+            try:
+                stack.extend(parse_task_file(path).get("dependsOn", []))
+            except (ValueError, OSError):
+                pass
+    return False
+
 def cmd_task(args):
     ensure_directories()
     if args.task_action == "create":
@@ -505,10 +536,15 @@ def cmd_task(args):
         labels = args.label if hasattr(args, "label") and args.label else []
         spec = args.spec if hasattr(args, "spec") and args.spec else ""
         plan = args.plan if hasattr(args, "plan") and args.plan else ""
+        depends_on = args.depends_on if hasattr(args, "depends_on") and args.depends_on else []
 
         if parent and not os.path.exists(os.path.join(TASKS_DIR, f"task-{parent}.md")):
             print(f"[-] Error: parent task {parent} does not exist.")
             sys.exit(1)
+        for dep in depends_on:
+            if not os.path.exists(os.path.join(TASKS_DIR, f"task-{dep}.md")):
+                print(f"[-] Error: dependency task {dep} does not exist.")
+                sys.exit(1)
 
         meta = {
             "id": next_id,
@@ -517,6 +553,7 @@ def cmd_task(args):
             "priority": args.priority or "medium",
             "assignee": assignee,
             "parent": parent,
+            "dependsOn": depends_on,
             "labels": labels,
             "spec": spec,
             "plan": plan,
@@ -525,6 +562,15 @@ def cmd_task(args):
         }
         next_id = create_task_file(meta)
         print(f"[+] Task created successfully: task-{next_id} (Title: {args.title})")
+
+    elif args.task_action == "next":
+        t = _core().next_task()
+        if not t:
+            print("[*] No actionable task (all done/blocked, or waiting on dependencies).")
+            return
+        print(f"[+] Next: TASK-{t['id']} [{t['priority']}] {t['title']}")
+        if t.get("dependsOn"):
+            print(f"    dependencies (all done): {', '.join('task-' + str(d) for d in t['dependsOn'])}")
 
     elif args.task_action == "list":
         tasks, parse_errors = _core().load_tasks()
@@ -595,6 +641,20 @@ def cmd_task(args):
                       f"(task {meta['id']} would become its own ancestor).")
                 sys.exit(1)
             meta["parent"] = new_parent
+        if hasattr(args, "add_dep") and args.add_dep:
+            for dep in args.add_dep:
+                if not os.path.exists(os.path.join(TASKS_DIR, f"task-{dep}.md")):
+                    print(f"[-] Error: dependency task {dep} does not exist.")
+                    sys.exit(1)
+                if detect_dependency_cycle(meta["id"], [dep]):
+                    print(f"[-] Error: depending on {dep} would create a dependency cycle.")
+                    sys.exit(1)
+                if dep not in meta["dependsOn"]:
+                    meta["dependsOn"].append(dep)
+        if hasattr(args, "remove_dep") and args.remove_dep:
+            for dep in args.remove_dep:
+                if dep in meta["dependsOn"]:
+                    meta["dependsOn"].remove(dep)
         if hasattr(args, "add_label") and args.add_label:
             if "labels" not in meta or not meta["labels"]:
                 meta["labels"] = []
@@ -1910,7 +1970,9 @@ def main():
     task_sub = task_parser.add_subparsers(dest="task_action", required=True)
     
     task_sub.add_parser("list", help="List all tasks")
-    
+
+    task_sub.add_parser("next", help="Show the next actionable task (deps satisfied, by priority)")
+
     create_task = task_sub.add_parser("create", help="Create a new task")
     create_task.add_argument("title", help="Task title")
     create_task.add_argument("-d", "--desc", help="Task description")
@@ -1918,10 +1980,11 @@ def main():
     create_task.add_argument("-p", "--priority", choices=["low", "medium", "high", "urgent"], help="Task priority")
     create_task.add_argument("-a", "--assignee", help="Task assignee")
     create_task.add_argument("--parent", type=int, help="Parent task ID")
+    create_task.add_argument("--depends-on", action="append", type=int, help="Prerequisite task ID (repeatable)")
     create_task.add_argument("-l", "--label", action="append", help="Label tag (repeatable)")
     create_task.add_argument("--spec", help="Linked spec document path")
     create_task.add_argument("--plan", help="Linked plan document path")
-    
+
     view_task = task_sub.add_parser("view", help="View a specific task")
     view_task.add_argument("id", type=int, help="Task ID")
     
@@ -1933,6 +1996,8 @@ def main():
     edit_task.add_argument("--add-ac", help="Add acceptance criteria item")
     edit_task.add_argument("--check-ac", type=int, help="Mark AC index as completed (1-based)")
     edit_task.add_argument("--parent", type=int, help="Update parent task ID")
+    edit_task.add_argument("--add-dep", action="append", type=int, help="Add a prerequisite task ID (repeatable)")
+    edit_task.add_argument("--remove-dep", action="append", type=int, help="Remove a prerequisite task ID (repeatable)")
     edit_task.add_argument("--add-label", help="Add label tag")
     edit_task.add_argument("--remove-label", help="Remove label tag")
     edit_task.add_argument("--spec", help="Update spec document path")
