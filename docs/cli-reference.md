@@ -499,7 +499,7 @@ Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, 
   ```
 
 ### `aim browser`
-Launch the AIM Control Hub web dashboard (Kanban board, docs library, memory, time tracking, dependency graph) on a local-only server.
+Launch the AIM Control Hub web dashboard (Kanban board, docs library, memory, time tracking, dependency graph, and a **Health** tab surfacing `aim doctor` findings) on a local-only server.
 * **Options:**
   * `-p`, `--port`: Port to bind (default `6420`; auto-increments if busy).
   * `--no-open`: Start the server without opening the browser automatically.

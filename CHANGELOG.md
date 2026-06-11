@@ -5,6 +5,16 @@ All notable changes to the AIM CLI and Control Hub project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-11
+
+### Added
+- **Dashboard "Health" tab** (#9) — surfaces `aim doctor` context-drift findings
+  in the Control Hub: a new `/api/doctor` endpoint (token-protected) plus a tab
+  that lists findings grouped by severity with their suggested fix. Content is
+  HTML-escaped.
+
+---
+
 ## [1.7.0] - 2026-06-11
 
 Two-way GitHub sync (#7) — completes the GitHub integration.
