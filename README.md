@@ -50,6 +50,8 @@ curl -fsSL https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.sh | 
 **Or directly via pip:**
 ```bash
 pip install git+https://github.com/phuonghx/aim-cli.git
+# optional: embeddings for `aim search --semantic` + doctor similar-memory check
+pip install "aim-cli[semantic] @ git+https://github.com/phuonghx/aim-cli.git"
 ```
 
 Then initialize AIM in your project:

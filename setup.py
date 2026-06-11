@@ -34,6 +34,11 @@ setup(
             "aim=aim.aim_cli:main",
         ]
     },
+    extras_require={
+        # Optional embeddings backend for `aim search --semantic` and the
+        # doctor similar-memory check. The core stays zero-dependency.
+        "semantic": ["sentence-transformers>=2.2"],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

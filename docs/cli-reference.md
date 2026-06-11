@@ -299,12 +299,15 @@ Delete a memory by ID.
 ## 6. Global Command Suite
 
 ### `aim search`
-Perform regex and case-insensitive matching across all tasks, docs, and memories.
+Perform case-insensitive matching across all tasks, docs, and memories.
 * **Arguments:**
   * `query` (Required): The search keyword.
+* **Options:**
+  * `--semantic`: rank by meaning using embeddings (needs `pip install aim-cli[semantic]`; falls back to keyword search if absent).
 * **Example:**
   ```bash
   aim search "jwt"
+  aim search "how do we handle auth tokens" --semantic
   ```
 
 ### `aim validate`

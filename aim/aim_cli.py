@@ -892,11 +892,31 @@ def cmd_doctor(args):
 # ==========================================
 def cmd_search(args):
     ensure_directories()
-    query = args.query.lower()
-    print(f"[*] Searching for '{query}' across tasks, docs, and memory...\n")
+    core = _core()
+    query = args.query
 
-    results = _core().search_workspace(query, context=30)
+    if getattr(args, "semantic", False):
+        try:
+            from aim import semantic
+        except ImportError:
+            import semantic
+        if not semantic.available():
+            print("[*] Semantic search needs the optional extra: pip install aim-cli[semantic]")
+            print("[*] Falling back to keyword search.\n")
+        else:
+            print(f"[*] Semantic search for '{query}'...\n")
+            results = core.semantic_search(query)
+            if not results:
+                print("[*] No matches found.")
+                return
+            print(f"{'Score':<7} {'Type':<8} {'Reference':<30} {'Title'}")
+            print("-" * 88)
+            for r in results:
+                print(f"{r.get('score', 0):<7} {r['type']:<8} {r['ref']:<30} {r.get('title', '')[:40]}")
+            return
 
+    print(f"[*] Searching for '{query.lower()}' across tasks, docs, and memory...\n")
+    results = core.search_workspace(query, context=30)
     if not results:
         print("[*] No matches found.")
         return
@@ -2180,6 +2200,7 @@ def main():
     # search
     search_parser = subparsers.add_parser("search", help="Search across tasks, docs, and memory")
     search_parser.add_argument("query", help="Search query string")
+    search_parser.add_argument("--semantic", action="store_true", help="Rank by meaning using embeddings (needs the [semantic] extra)")
 
     # validate
     validate_parser = subparsers.add_parser("validate", help="Validate links and references health")

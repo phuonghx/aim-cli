@@ -509,6 +509,58 @@ def search_workspace(query, context=40):
     return results
 
 
+def _all_searchables():
+    """Every searchable item as (result_dict, text) for semantic ranking."""
+    cli = _cli()
+    items = []
+    if os.path.exists(cli.TASKS_DIR):
+        for filename in sorted(os.listdir(cli.TASKS_DIR)):
+            if filename.startswith("task-") and filename.endswith(".md"):
+                try:
+                    meta = cli.parse_task_file(os.path.join(cli.TASKS_DIR, filename))
+                except (ValueError, OSError):
+                    continue
+                text = f"{meta['title']}\n{meta.get('description', '')}"
+                items.append(({"type": "task", "id": meta["id"], "ref": f"@task-{meta['id']}",
+                               "title": meta["title"], "snippet": meta.get("description", "")[:120]}, text))
+    for rel, full_path in doc_files():
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            continue
+        fallback = os.path.basename(rel).replace(".md", "").replace("-", " ").title()
+        title = doc_title(content, fallback)
+        items.append(({"type": "doc", "path": rel, "ref": f"@doc/{rel}",
+                       "title": title, "snippet": content[:120]}, f"{title}\n{content}"))
+    for mem in load_memories():
+        items.append(({"type": "memory", "id": mem.get("id"),
+                       "ref": f"Memory #{mem.get('id')}",
+                       "title": f"Memory ({mem.get('category', 'general')})",
+                       "snippet": mem.get("content", "")}, mem.get("content", "")))
+    return items
+
+
+def semantic_search(query, top_k=10):
+    """Embeddings-backed search (optional [semantic] extra). Returns ranked
+    results (each with a `score`), or None if the extra is unavailable."""
+    try:
+        from aim import semantic
+    except ImportError:
+        import semantic
+    items = _all_searchables()
+    ranked = semantic.rank(query, [(res["ref"], text) for res, text in items])
+    if ranked is None:
+        return None
+    by_ref = {res["ref"]: res for res, _t in items}
+    out = []
+    for ref, score in ranked[:top_k]:
+        res = dict(by_ref[ref])
+        res["score"] = round(score, 3)
+        out.append(res)
+    return out
+
+
 # ==========================================
 # Users
 # ==========================================
@@ -1225,6 +1277,21 @@ def run_diagnostics(author=None):
         add("info", "spec-coverage",
             f"{len(no_spec)}/{len(tasks)} tasks have no spec link "
             f"({len(tasks) - len(no_spec)}/{len(tasks)} covered).")
+
+    # 9. Similar memories (optional [semantic] extra): highly-similar pairs are
+    # likely duplicates or contradictions worth a human review.
+    try:
+        from aim import semantic
+    except ImportError:
+        import semantic
+    if semantic.available():
+        mems = [(m["id"], m.get("content", "")) for m in load_memories() if m.get("content")]
+        pairs = semantic.similar_pairs(mems) if len(mems) > 1 else None
+        for a, b, score in (pairs or []):
+            add("low", "similar-memory",
+                f"Memories #{a} and #{b} are very similar (score {score}) — "
+                f"possible duplicate or contradiction; review/merge.",
+                f"aim memory view {a}; aim memory view {b}")
 
     findings.sort(key=lambda f: -SEVERITY_ORDER.get(f["severity"], 0))
     return findings
