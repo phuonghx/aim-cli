@@ -31,6 +31,7 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 6. [Global Command Suite](#6-global-command-suite)
    * [`aim search`](#aim-search)
    * [`aim validate`](#aim-validate)
+   * [`aim ingest`](#aim-ingest)
    * [`aim doctor`](#aim-doctor)
    * [`aim status`](#aim-status)
    * [`aim board`](#aim-board)
@@ -284,6 +285,25 @@ Scan tasks and documents for broken mentions (e.g. `@task-999` or `@doc/missing`
 * **Example:**
   ```bash
   aim validate
+  ```
+
+### `aim ingest`
+Reverse-sync: import rules you already hand-wrote across AI-client files into
+AIM, so they become one consolidated source of truth. Scans every sync target
+plus `.clinerules` / `.rules` / `.aider.conf.yml`, collects the content outside
+the AIM markers (so it never re-imports AIM's own output — safe to re-run), and
+writes it to `.ai-context/imported/*.md`. The next `aim sync` re-emits it into
+every client file under an "Imported Project Rules" section.
+* **Options:**
+  * `--dry-run`: preview what would be imported without writing.
+  * `--emit`: print the raw content plus an instruction for the connected agent
+    to restructure it into `config.json` (zero-dependency "invert the LLM" path).
+* **Workflow:**
+  ```bash
+  aim ingest --dry-run     # see what will be pulled in
+  aim ingest               # write to .ai-context/imported/
+  aim sync                 # re-emit consolidated rules everywhere
+  # then delete the now-redundant originals from the source files
   ```
 
 ### `aim doctor`

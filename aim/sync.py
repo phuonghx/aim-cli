@@ -332,6 +332,29 @@ NEW_FILE_HEADERS = {
     os.path.join(".cursor", "rules", "aim.mdc"): CURSOR_MDC_FRONTMATTER,
 }
 
+
+def imported_rules_section(root_dir):
+    """Concatenate rules collected by `aim ingest` (.ai-context/imported/*.md)
+    into one markdown section, re-emitted into every client file so scattered
+    rules become a single consolidated source of truth. Returns '' if none."""
+    imported_dir = os.path.join(root_dir, ".ai-context", "imported")
+    if not os.path.isdir(imported_dir):
+        return ""
+    blocks = []
+    for name in sorted(os.listdir(imported_dir)):
+        if name.endswith(".md"):
+            try:
+                with open(os.path.join(imported_dir, name), "r", encoding="utf-8") as f:
+                    body = f.read().strip()
+            except OSError:
+                continue
+            if body:
+                blocks.append(body)
+    if not blocks:
+        return ""
+    return "\n\n## Imported Project Rules\n\n" + "\n\n".join(blocks) + "\n"
+
+
 def main():
     root_dir = find_project_root()
     print(f"[*] Detected project root: {root_dir}")
@@ -339,12 +362,14 @@ def main():
     config = load_config(root_dir)
     print("[*] Loaded configuration file successfully.")
 
+    imported = imported_rules_section(root_dir)
+
     for label, rel_path, generator in SYNC_TARGETS:
         target_path = os.path.join(root_dir, rel_path)
         parent_dir = os.path.dirname(target_path)
         if parent_dir and not os.path.exists(parent_dir):
             os.makedirs(parent_dir)
-        write_managed_file(target_path, generator(config),
+        write_managed_file(target_path, generator(config) + imported,
                            header_if_new=NEW_FILE_HEADERS.get(rel_path))
         print(f"[+] Synchronized {target_path}")
 

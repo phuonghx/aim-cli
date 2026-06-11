@@ -731,6 +731,52 @@ def cmd_memory(args):
         print(f"[+] Memory #{args.id} marked as reviewed (staleness clock reset).")
 
 # ==========================================
+# 5.4. INGEST COMMAND (reverse-sync)
+# ==========================================
+def cmd_ingest(args):
+    ensure_directories()
+    core = _core()
+
+    if getattr(args, "emit", False):
+        # LLM-inversion: hand the raw content to the connected agent to
+        # restructure into config.json. AIM stays zero-dependency.
+        payload = core.ingest_emit_payload()
+        if not payload["sources"]:
+            print("[*] No hand-written rule files found to ingest.")
+            return
+        print(payload["instruction"])
+        print()
+        for s in payload["sources"]:
+            print(f"===== {s['source']} ({s['lines']} lines) =====")
+            print(s["content"])
+            print()
+        return
+
+    sources = core.ingest_sources()
+    if not sources:
+        print("[*] No hand-written rule files found to ingest "
+              "(nothing outside AIM markers in known rule files).")
+        return
+
+    print("[*] Found hand-written rules in:")
+    for s in sources:
+        print(f"  - {s['source']}  ({s['lines']} lines)")
+
+    if getattr(args, "dry_run", False):
+        print("\n[*] Dry run - nothing written. Re-run without --dry-run to import.")
+        return
+
+    written = core.apply_ingest(sources)
+    print("\n[+] Imported into:")
+    for w in written:
+        print(f"  - {w}")
+    print("\n[*] Next steps:")
+    print("    1. Review the files under .ai-context/imported/")
+    print("    2. Run `aim sync` to re-emit them into every client file")
+    print("    3. Remove the now-redundant original rules from the source files")
+    print("       (they live inside the AIM markers after sync).")
+
+# ==========================================
 # 5.5. DOCTOR COMMAND (context health)
 # ==========================================
 def cmd_doctor(args):
@@ -1937,6 +1983,11 @@ def main():
     # validate
     subparsers.add_parser("validate", help="Validate links and references health")
 
+    # ingest
+    ingest_parser = subparsers.add_parser("ingest", help="Import existing hand-written rule files (CLAUDE.md, .cursorrules, ...) into AIM")
+    ingest_parser.add_argument("--dry-run", action="store_true", help="Preview what would be imported without writing")
+    ingest_parser.add_argument("--emit", action="store_true", help="Print raw content + an instruction for the connected agent to restructure into config (zero-dependency LLM inversion)")
+
     # doctor
     doctor_parser = subparsers.add_parser("doctor", help="Diagnose context drift (stale memory, broken refs, id clashes)")
     doctor_parser.add_argument("--mine", action="store_true", help="Only show findings for memories you authored")
@@ -2030,6 +2081,8 @@ def main():
         cmd_search(args)
     elif args.command == "validate":
         cmd_validate(args)
+    elif args.command == "ingest":
+        cmd_ingest(args)
     elif args.command == "doctor":
         cmd_doctor(args)
     elif args.command == "status":
