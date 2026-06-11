@@ -119,6 +119,23 @@ every tool, so the next session (in any client) does not repeat the mistake.
 
 ---
 
+## 🐙 GitHub sync (`aim github`)
+
+Project AIM tasks onto GitHub Issues + Projects so your team gets a familiar
+board, while AIM stays the agent's working layer. Zero-dependency — it shells out
+to the `gh` CLI (requires `gh auth login`).
+
+```bash
+aim github create-project "AIM Roadmap"   # create a Project (v2)
+aim github push --all --project 3         # create/update an issue per task, add to the project
+aim github status                         # show task <-> issue linkage
+```
+
+Issues are idempotent (the issue number is stored back in each task); a `done`
+task closes its issue.
+
+---
+
 ## 🩺 Context Health (`aim doctor`)
 
 AIM's wedge is fighting **context drift** — stale rules and decisions that make

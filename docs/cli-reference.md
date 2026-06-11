@@ -51,6 +51,7 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 9. [AI Assistant Integration](#9-ai-assistant-integration)
    * [`aim mcp`](#aim-mcp)
    * [`aim browser`](#aim-browser)
+   * [`aim github`](#aim-github)
 10. [Demo Workspace](#10-demo-workspace)
    * [`aim demo`](#aim-demo)
 
@@ -494,6 +495,34 @@ Launch the AIM Control Hub web dashboard (Kanban board, docs library, memory, ti
 * **Example:**
   ```bash
   aim browser -p 7000 --no-open
+  ```
+
+### `aim github`
+Sync tasks to GitHub Issues / Projects via the `gh` CLI (no extra dependencies;
+requires `gh` installed and `gh auth login`). GitHub becomes the team's display
+layer while AIM stays the agent's working layer.
+
+#### `aim github push`
+Create or update a GitHub issue per task — idempotent via the `**GitHub Issue:**`
+number stored back in each task. Maps a `done` task to a closed issue, otherwise
+open.
+* **Arguments:** `id` (optional) — a single task; omit to push all tasks.
+* **Options:** `--project N` — also add the issues to Project (v2) number `N`.
+* **Example:**
+  ```bash
+  aim github push --all --project 3
+  ```
+
+#### `aim github status`
+Show each task and its linked GitHub issue (or `-` if not pushed).
+* **Usage:** `aim github status`
+
+#### `aim github create-project`
+Create a GitHub Project (v2) owned by the repo owner.
+* **Arguments:** `title` (Required).
+* **Example:**
+  ```bash
+  aim github create-project "AIM Roadmap"
   ```
 
 ---

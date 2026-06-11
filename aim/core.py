@@ -11,6 +11,7 @@ Path resolution is delegated to aim_cli's module globals at call time
 """
 import datetime
 import getpass
+import json
 import os
 import re
 import subprocess
@@ -610,6 +611,146 @@ def collect_status():
         "syncStatuses": sync_statuses,
         "allSynced": all_synced,
     }
+
+
+# ==========================================
+# GitHub sync — `aim github` (Issues / Projects via the gh CLI)
+# ==========================================
+def _gh(args, input_text=None):
+    """Run a gh CLI command in the workspace root. Returns stdout on success;
+    raises RuntimeError (with stderr) on failure or if gh is unavailable.
+    Isolated as a seam so the sync logic is unit-testable without real gh."""
+    cli = _cli()
+    try:
+        result = subprocess.run(
+            ["gh", *args], cwd=cli.ROOT_DIR, capture_output=True,
+            text=True, input=input_text, timeout=60,
+        )
+    except (FileNotFoundError, OSError) as e:
+        raise RuntimeError("GitHub CLI (gh) is not installed or not on PATH.") from e
+    except subprocess.SubprocessError as e:
+        raise RuntimeError(f"gh command failed: {e}") from e
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "gh command failed").strip())
+    return result.stdout
+
+
+def github_available():
+    """True if gh is installed and authenticated."""
+    try:
+        _gh(["auth", "status"])
+        return True
+    except RuntimeError:
+        return False
+
+
+def repo_slug():
+    """owner/repo for the current workspace, via gh."""
+    return _gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).strip()
+
+
+_ISSUE_NUM_RE = re.compile(r"/issues/(\d+)\s*$")
+
+
+def parse_issue_number(url):
+    m = _ISSUE_NUM_RE.search((url or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def task_to_issue_body(task):
+    """Render an AIM task as a GitHub issue body, ending with a hidden marker
+    that ties the issue back to the AIM task id."""
+    lines = []
+    if task.get("description"):
+        lines.append(task["description"].strip())
+        lines.append("")
+    if task.get("ac"):
+        lines.append("### Acceptance Criteria")
+        for ac in task["ac"]:
+            box = "x" if ac.get("checked") else " "
+            lines.append(f"- [{box}] {ac['text']}")
+        lines.append("")
+    if task.get("dependsOn"):
+        lines.append("**Depends on:** " + ", ".join(f"AIM task-{d}" for d in task["dependsOn"]))
+        lines.append("")
+    lines.append("---")
+    lines.append(f"_Synced from AIM · task-{task['id']} · do not edit this marker_")
+    lines.append(f"<!-- aim-task:{task['id']} -->")
+    return "\n".join(lines).strip()
+
+
+def _issue_title(task):
+    return f"[AIM-{task['id']}] {task['title']}"
+
+
+def push_task(task_id, project=None):
+    """Create or update a GitHub issue for one AIM task (idempotent via the
+    stored githubIssue number). Maps done->closed, else open. Optionally adds
+    the issue to a Project v2. Returns {taskId, issue, action, status}."""
+    cli = _cli()
+    task = get_task(task_id)
+    if task is None:
+        raise RuntimeError(f"Task {task_id} not found.")
+
+    title = _issue_title(task)
+    body = task_to_issue_body(task)
+    issue = task.get("githubIssue")
+    status = task.get("status", "todo").lower()
+
+    if issue:
+        _gh(["issue", "edit", str(issue), "--title", title, "--body", body])
+        action = "updated"
+    else:
+        out = _gh(["issue", "create", "--title", title, "--body", body])
+        url = out.strip().splitlines()[-1] if out.strip() else ""
+        issue = parse_issue_number(url)
+        if issue is None:
+            raise RuntimeError(f"Could not parse issue number from gh output: {out!r}")
+        task["githubIssue"] = issue
+        cli.write_task_file(task)
+        action = "created"
+
+    # Reflect AIM status on the issue: done -> closed, otherwise open.
+    try:
+        if status == "done":
+            _gh(["issue", "close", str(issue)])
+        else:
+            _gh(["issue", "reopen", str(issue)])
+    except RuntimeError:
+        pass  # already in that state, or not permitted — non-fatal
+
+    if project:
+        try:
+            slug = repo_slug()
+            owner = slug.split("/")[0]
+            issue_url = f"https://github.com/{slug}/issues/{issue}"
+            _gh(["project", "item-add", str(project), "--owner", owner, "--url", issue_url])
+        except RuntimeError:
+            pass  # project linking is best-effort
+
+    return {"taskId": task["id"], "issue": issue, "action": action, "status": status}
+
+
+def push_all(project=None):
+    """Push every task to GitHub. Returns a list of per-task results."""
+    tasks, _errors = load_tasks()
+    return [push_task(t["id"], project=project) for t in tasks]
+
+
+def github_status():
+    """Per-task linkage view: {taskId, title, status, issue}."""
+    tasks, _errors = load_tasks()
+    return [{"taskId": t["id"], "title": t["title"],
+             "status": t.get("status", "todo"), "issue": t.get("githubIssue")}
+            for t in tasks]
+
+
+def create_project(title):
+    """Create a GitHub Project (v2) owned by the repo owner. Returns the parsed
+    JSON (number, url, ...)."""
+    owner = repo_slug().split("/")[0]
+    out = _gh(["project", "create", "--owner", owner, "--title", title, "--format", "json"])
+    return json.loads(out)
 
 
 # ==========================================
