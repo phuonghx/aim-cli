@@ -1,0 +1,2 @@
+# Documentation site (GitHub Pages) — not required to run AIM itself.
+mkdocs-material>=9.5

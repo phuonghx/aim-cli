@@ -1,0 +1,84 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+
+      - name: Lint (ruff)
+        run: ruff check aim tests
+
+      - name: Run tests
+        run: pytest -q
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build Python packages (Wheel & Tarball)
+        run: |
+          # Build from the root directory where setup.py is now located
+          python -m build
+
+      - name: Verify the built wheel installs and runs
+        shell: bash
+        run: |
+          # Install the actual artifact we are about to publish and smoke-test
+          # it, so a broken wheel never reaches a release.
+          python -m pip install dist/*.whl
+          aim --version
+          work="$(mktemp -d)"; cd "$work"; git init -q
+          python -m aim.aim_cli init
+          python -m aim.aim_cli lint .aim-agents/skills
+
+      - name: Create aim.zip release archive
+        run: |
+          # Archive the aim source directory, batch wrappers, and ignore python cache/metadata
+          zip -r aim.zip aim/ aim.bat aim.sh -x "aim/__pycache__/*" "aim/**/*.pyc" "aim/aim_cli.egg-info/*"
+
+      - name: Upload binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            aim.zip
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

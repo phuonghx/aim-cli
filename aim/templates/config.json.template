@@ -1,0 +1,51 @@
+{
+  "projectName": "My Project",
+  "projectDescription": "A unified project context for AI agents.",
+  "agents": {
+    "claude": true,
+    "antigravity": true,
+    "cursor": true,
+    "windsurf": true,
+    "gemini": true,
+    "copilot": true,
+    "codex": true
+  },
+  "skillCommands": true,
+  "gitTracking": "track-all",
+  "techStack": [
+    "JavaScript/TypeScript",
+    "Node.js",
+    "React/Next.js"
+  ],
+  "commands": {
+    "build": "npm run build",
+    "test": "npm test",
+    "lint": "npm run lint",
+    "format": "npx prettier --write ."
+  },
+  "conventions": [
+    "Use TypeScript for type safety and clean code.",
+    "Follow functional components and hooks for React.",
+    "Organize tests alongside source files using *.test.ts structure.",
+    "Use Conventional Commits for commit messages."
+  ],
+  "constraints": [
+    "Do not commit node_modules or environment secrets.",
+    "Avoid using any deprecated APIs or packages.",
+    "Ensure all modifications build and pass existing tests before completing."
+  ],
+  "customRules": {
+    "claude": [
+      "Use token-saving command prefixes like rtk if available.",
+      "Check existing tests before generating new ones."
+    ],
+    "antigravity": [
+      "Follow standard planning mode rules: update implementation_plan.md, task.md, and walkthrough.md.",
+      "Run unit tests to verify changes instead of assuming success."
+    ],
+    "codex": [
+      "Prioritize using modern React practices and styles.",
+      "Avoid large file reads where grep/search can find specific references."
+    ]
+  }
+}

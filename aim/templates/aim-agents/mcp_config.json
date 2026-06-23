@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "aim": {
+      "command": "aim",
+      "args": ["mcp"]
+    }
+  }
+}
