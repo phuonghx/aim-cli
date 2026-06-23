@@ -1,10 +1,6 @@
 <div align="center">
 
-# AIM 🎯
-
-### One context layer for every AI coding assistant
-
-**Unified memory, tasks, docs & rules for Claude Code, Cursor, Windsurf, GitHub Copilot, Gemini, Antigravity, and any MCP client — from a single source of truth.**
+<img src=".github/social-preview.png" alt="AIM — one context layer for every AI coding assistant" width="100%">
 
 [![CI](https://github.com/phuonghx/aim-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/phuonghx/aim-cli/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/phuonghx/aim-cli?sort=semver)](https://github.com/phuonghx/aim-cli/releases)

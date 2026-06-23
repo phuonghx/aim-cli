@@ -8,6 +8,8 @@ description: >-
 
 # AIM 🎯 — one context, every AI assistant
 
+![AIM — one context layer for every AI coding assistant](assets/banner.png){ width="100%" }
+
 **AIM (AI Memory / Mind)** is a zero-dependency command-line engine that keeps your
 project's **memory, tasks, docs, and rules** in one place and compiles them into the
 native instruction files every AI coding assistant expects — so **Claude Code,
