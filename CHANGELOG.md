@@ -5,6 +5,17 @@ All notable changes to AIM are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-06-23
+
+### Fixed
+- **Bundled MCP config** (`.aim-agents/mcp_config.json`) was invalid JSON (it
+  contained a `//` comment) and showed an unrelated example server. It now
+  registers the `aim` MCP server, so it can be copied straight into `.mcp.json`
+  or `.cursor/mcp.json` to expose AIM's tools to a client.
+- **Generated instruction files** (CLAUDE.md, AGENTS.md, …) hardcoded
+  "45 skills"; the agent/skill/workflow totals are now counted from the bundle
+  at sync time so they never go stale (now 20 personas · 55 skills · 13 workflows).
+
 ## [1.0.1] - 2026-06-23
 
 ### Changed
