@@ -33,7 +33,15 @@ jobs:
       - name: Run tests
         run: pytest -q
 
-      - name: Smoke test CLI and server import
+      - name: Install and smoke test
+        shell: bash
         run: |
-          python -m aim.aim_cli --version
-          python -c "import aim.browser_server"
+          # Install the package the way a user would, then exercise the
+          # console-script entry point and the bundled data so packaging
+          # regressions (missing package_data, broken entry point) fail CI.
+          pip install .
+          aim --version
+          python -c "import aim.browser_server, aim.mcp_server"
+          work="$(mktemp -d)"; cd "$work"; git init -q
+          python -m aim.aim_cli init
+          python -m aim.aim_cli lint .aim-agents/skills

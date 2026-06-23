@@ -5,6 +5,15 @@ All notable changes to AIM are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-06-23
+
+### Changed
+- CI and the release pipeline now **install the built package** and smoke-test it
+  (`aim --version`, `aim init`, `aim lint`) on Ubuntu and Windows. Packaging or
+  entry-point regressions — missing `package_data`, a broken console script —
+  now fail the build instead of only surfacing for end users. The release job
+  additionally installs the exact wheel it is about to publish before uploading.
+
 ## [1.0.0] - 2026-06-23
 
 Initial public release of **AIM (AI Memory / Mind)** — a zero-dependency CLI that
