@@ -4,59 +4,6 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 
 ---
 
-## Table of Contents
-1. [Core Lifecycle Commands](#1-core-lifecycle-commands)
-   * [`aim init`](#aim-init)
-   * [`aim sync`](#aim-sync)
-2. [Task Management](#2-task-management)
-   * [`aim task create`](#aim-task-create)
-   * [`aim task list`](#aim-task-list)
-   * [`aim task next`](#aim-task-next)
-   * [`aim task renumber`](#aim-task-renumber)
-   * [`aim task view`](#aim-task-view)
-   * [`aim task edit`](#aim-task-edit)
-3. [User & Team Management](#3-user--team-management)
-   * [`aim user list`](#aim-user-list)
-   * [`aim user add`](#aim-user-add)
-   * [`aim user rename`](#aim-user-rename)
-   * [`aim user remove`](#aim-user-remove)
-4. [Structured Documentation](#4-structured-documentation)
-   * [`aim doc create`](#aim-doc-create)
-   * [`aim doc list`](#aim-doc-list)
-   * [`aim doc view`](#aim-doc-view)
-5. [Persistent Memory](#5-persistent-memory)
-   * [`aim memory add`](#aim-memory-add)
-   * [`aim memory list`](#aim-memory-list)
-   * [`aim memory edit`](#aim-memory-edit)
-   * [`aim memory review`](#aim-memory-review)
-   * [`aim memory rm`](#aim-memory-rm)
-6. [Global Command Suite](#6-global-command-suite)
-   * [`aim search`](#aim-search)
-   * [`aim validate`](#aim-validate)
-   * [`aim spec`](#aim-spec)
-   * [`aim ingest`](#aim-ingest)
-   * [`aim doctor`](#aim-doctor)
-   * [`aim status`](#aim-status)
-   * [`aim board`](#aim-board)
-7. [Time Tracking](#7-time-tracking)
-   * [`aim time start`](#aim-time-start)
-   * [`aim time status`](#aim-time-status)
-   * [`aim time stop`](#aim-time-stop)
-   * [`aim time log`](#aim-time-log)
-   * [`aim time report`](#aim-time-report)
-8. [Code Generation Templates](#8-code-generation-templates)
-   * [`aim template create`](#aim-template-create)
-   * [`aim template list`](#aim-template-list)
-   * [`aim template view`](#aim-template-view)
-   * [`aim template run`](#aim-template-run)
-9. [AI Assistant Integration](#9-ai-assistant-integration)
-   * [`aim mcp`](#aim-mcp)
-   * [`aim browser`](#aim-browser)
-   * [`aim github`](#aim-github)
-10. [Demo Workspace](#10-demo-workspace)
-   * [`aim demo`](#aim-demo)
-
----
 
 ## 1. Core Lifecycle Commands
 
@@ -175,6 +122,8 @@ Update task properties, mark acceptance criteria, or manage labels.
 
 ## 3. User & Team Management
 
+> ⚠️ **Frozen.** These commands still work but are no longer under active development — see [ADR 0001](decisions/0001-freeze-time-tracking-and-users.md).
+
 ### `aim user list`
 List all registered project team members.
 * **Usage:** `aim user list`
@@ -255,6 +204,7 @@ Save a reusable pattern, rule, or architectural decision.
 * **Options:**
   * `-c`, `--category`: Categorization keyword (e.g. `decision`, `convention`, `guideline`). Default: `general`.
   * `-l`, `--layer`: Memory scope (`project` or `global`). `global` persists to `~/.aim/memories.json` and follows you across every repo. Default: `project`.
+  * `--importance`: Importance score 1–10 (default 5); biases ranked recall via `aim memory context` and the `get_memory_context` MCP tool.
 * **Notes:** Memories automatically capture the `author` (`git config user.name`),
   a `reviewedAt` timestamp, and `refs` — file paths / `@`-refs found in the text,
   which `aim doctor` uses to detect staleness. Wrap paths in backticks
@@ -294,6 +244,18 @@ Delete a memory by ID.
   aim memory rm 7
   ```
 
+### `aim memory context`
+Assemble the most relevant memories into a compact block — ranked by relevance ×
+importance × recency — to inject as an agent's working memory. Also exposed to
+agents as the `get_memory_context` MCP tool. Uses the `[semantic]` extra when
+installed, otherwise a deterministic keyword fallback.
+* **Arguments:** `query` (optional) — what you're working on; omit for the top memories overall.
+* **Options:** `--limit` — max memories to include (default 8).
+* **Example:**
+  ```bash
+  aim memory context "auth tokens"
+  ```
+
 ---
 
 ## 6. Global Command Suite
@@ -322,6 +284,18 @@ Scan tasks and documents for broken mentions (e.g. `@task-999` or `@doc/missing`
 
 ### `aim spec`
 Spec-driven development helpers built on the task `spec`/`plan` fields.
+
+#### `aim spec new`
+Scaffold a new feature spec under `.ai-context/docs/specs/<slug>/` —
+`requirements.md` (with **EARS** acceptance criteria), `design.md`, and
+`tasks.md` — plus an umbrella task linked via `--spec`. Expand `tasks.md` into
+tracked tasks with the `decompose_prd` MCP prompt or `aim task create ... --depends-on`.
+* **Arguments:** `name` (Required) — the feature name.
+* **Options:** `--no-task` — skip creating the umbrella task.
+* **Example:**
+  ```bash
+  aim spec new "Checkout redesign"
+  ```
 
 #### `aim spec import`
 Import a [GitHub spec-kit](https://github.com/github/spec-kit) feature directory:
@@ -393,9 +367,31 @@ Display a lightweight, text-based ASCII Kanban board arrangement of all active t
   aim board
   ```
 
+### `aim lint`
+Validate bundled `SKILL.md` files against the Agent Skills conventions — required
+`name`/`description`, `name`↔folder match, size limits, and the legacy
+`when_to_use` field.
+* **Arguments:** `path` (optional, default `.`) — directory scanned recursively.
+* **Options:**
+  * `--fix`: fold a non-standard `when_to_use` field into `description` in place.
+  * `--strict`: exit non-zero on warnings too (CI gate).
+* **Example:**
+  ```bash
+  aim lint .aim-agents/skills
+  aim lint .aim-agents/skills --fix
+  ```
+
+### `aim upgrade`
+Upgrade AIM to the latest release via pip. AIM also prints a one-line "new release
+available" notice at most once a day in an interactive terminal (opt out with
+`AIM_NO_UPDATE_CHECK=1`).
+* **Usage:** `aim upgrade`
+
 ---
 
 ## 7. Time Tracking
+
+> ⚠️ **Frozen.** These commands still work but are no longer under active development — see [ADR 0001](decisions/0001-freeze-time-tracking-and-users.md).
 
 ### `aim time start`
 Start a time tracking session for a specific task. Only one active timer can run at a time.
@@ -489,7 +485,7 @@ Execute a template to generate source files. Prompts interactively for missing v
 ### `aim mcp`
 Run the AIM MCP (Model Context Protocol) server over stdio. AI assistants connected to it can query and mutate the workspace directly — no static file reads needed. Zero external dependencies (pure stdlib JSON-RPC).
 
-Exposed tools: `list_tasks`, `get_task`, `create_task`, `search`, `add_memory`, `list_memories`.
+Exposed tools: `list_tasks`, `get_task`, `create_task`, `create_tasks`, `next_task`, `search`, `get_memory_context`, `add_memory`, `list_memories`, `record_correction`, `review_memory`, `doctor`. Plus a `decompose_prd` prompt that turns a PRD into dependency-ordered tasks.
 
 * **Usage:** `aim mcp` (intended to be launched by the MCP client, not by hand)
 * **Register in Claude Code:**
