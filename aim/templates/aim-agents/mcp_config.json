@@ -1,14 +1,8 @@
-// setup mcp server in  ~/.gemini\aim\mcp_config.json
 {
-    "mcpServers": {
-        "context7": {
-            "command": "npx",
-            "args": [
-                "-y",
-                "@upstash/context7-mcp",
-                "--api-key",
-                "YOUR_API_KEY"
-            ]
-        }
+  "mcpServers": {
+    "aim": {
+      "command": "aim",
+      "args": ["mcp"]
     }
+  }
 }

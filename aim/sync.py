@@ -70,7 +70,34 @@ def write_managed_file(path, generated_content, header_if_new=None):
         f.write(new_content)
     os.replace(tmp_path, path)
 
-SKILLS_INDEX_MD = """
+def _suite_counts():
+    """Count the bundled specialist agents, skills, and workflows so the
+    generated instruction files never quote a stale number. Reads the packaged
+    templates relative to this module; returns (agents, skills, workflows)."""
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "aim-agents")
+
+    def _n(sub, ext=None):
+        d = os.path.join(base, sub)
+        try:
+            entries = os.listdir(d)
+        except OSError:
+            return 0
+        if ext is None:  # count sub-directories (skills are folders)
+            return sum(1 for e in entries if os.path.isdir(os.path.join(d, e)))
+        return sum(1 for e in entries if e.endswith(ext))
+
+    return _n("agent", ".md"), _n("skills"), _n("workflows", ".md")
+
+
+_N_AGENTS, _N_SKILLS, _N_WORKFLOWS = _suite_counts()
+_SUITE_LINE = (
+    f"You have access to {_N_AGENTS} specialist personas, {_N_SKILLS} skills, and "
+    f"{_N_WORKFLOWS} workflows provided by AIM:"
+    if (_N_AGENTS and _N_SKILLS and _N_WORKFLOWS)
+    else "You have access to AIM's suite of specialist personas, skills, and workflows:"
+)
+
+SKILLS_INDEX_MD = f"""
 ## Modular Skills & Agent Personas (Load On-Demand to Save Tokens)
 When working on specific tasks, read and load these modular rules to guide your implementation:
 - **Memory & Cross-Referencing:** `.ai-context/skills/project-memory/SKILL.md` (Read when creating docs, referencing files, or managing tasks)
@@ -78,7 +105,7 @@ When working on specific tasks, read and load these modular rules to guide your 
 - **Token Optimization & Command Guidelines:** `.ai-context/skills/token-optimizer/SKILL.md` (Read when running shell commands, executing test suites, or doing search operations)
 
 ### Specialist Agent Suite & Workflows (.aim-agents/)
-You have access to 20 specialized personas, 45 skills, and 13 workflows provided by AIM:
+{_SUITE_LINE}
 - **Specialist Personas:** `.aim-agents/agent/` (Includes `frontend-specialist.md`, `backend-specialist.md`, `database-architect.md`, `devops-engineer.md`, `security-auditor.md`, `debugger.md`, `orchestrator.md`, etc.)
 - **Advanced Domain Skills:** `.aim-agents/skills/` (Includes `nextjs-react-expert/`, `web-design-guidelines/`, `api-patterns/`, `testing-patterns/`, `python-patterns/`, `database-design/`, `systematic-debugging/`, etc.)
 - **Agentic Workflows:** `.aim-agents/workflows/` (Includes rules for `/brainstorm`, `/coordinate`, `/plan`, `/debug`, `/verify`, `/remember`, etc.)
