@@ -59,7 +59,17 @@ iwr -useb https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.ps1 | 
 curl -fsSL https://raw.githubusercontent.com/phuonghx/aim-cli/main/install.sh | bash
 ```
 
-Sau khi cài, chạy `aim init` trong thư mục dự án để bắt đầu.
+Sau khi cài, chạy `aim init` trong thư mục dự án để bắt đầu. Mặc định, `aim init` sẽ chạy ở chế độ tương tác (interactive) để bạn:
+- Chọn các AI Agent đích cần kích hoạt (Claude, Cursor, Windsurf, Antigravity, v.v.).
+- Chọn chiến lược theo dõi tệp qua Git (`track-all`, `ignore-all`, hoặc `rules-only`).
+- Chọn có tạo các slash command `/aim-<skill>` cho các agent tương ứng hay không.
+
+Bạn cũng có thể truyền các tham số để bỏ qua giao diện tương tác (rất hữu ích cho CI hoặc scripts):
+```bash
+aim init --all-agents --git-ignore
+```
+
+Việc chạy lại `aim init` trên một dự án đã khởi tạo sẽ chỉ cập nhật tệp cấu hình `config.json` mà không ghi đè các skill/agent bạn đã tuỳ chỉnh. Sử dụng `aim init --force` nếu bạn muốn cài đặt lại toàn bộ các template từ đầu (một bản sao lưu đóng dấu thời gian `.bak` sẽ được giữ lại).
 
 ### Khắc phục lỗi `'aim' is not recognized` / `command not found`
 

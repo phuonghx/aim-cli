@@ -77,9 +77,17 @@ aim init          # set up .ai-context/, skills, and agent suite
 aim --version     # verify the installed version
 ```
 
-Re-running `aim init` on an existing workspace will not overwrite your
-customized skills/agents — use `aim init --force` to reinstall (a timestamped
-`.bak` backup is kept).
+By default, `aim init` runs interactively in a TTY to let you:
+- Select which target AI agents to enable (Claude, Cursor, Windsurf, Antigravity, etc.).
+- Choose a Git tracking strategy for generated files (`track-all`, `ignore-all`, or `rules-only`).
+- Choose whether to generate `/aim-<skill>` slash commands for active agents.
+
+You can also pass arguments to skip interactive prompts (useful in scripts or CI):
+```bash
+aim init --all-agents --git-ignore
+```
+
+Re-running `aim init` on an existing workspace will update the settings in `config.json` without overwriting your customized skills/agents — use `aim init --force` to reinstall templates completely (a timestamped `.bak` backup is kept).
 
 **Already have rules scattered across files?** Pull your existing CLAUDE.md /
 `.cursorrules` / `.clinerules` / AGENTS.md into AIM in one step:

@@ -59,3 +59,45 @@ AIM instructs Cursor and Windsurf to prioritize high-level visual excellence:
 GitHub Copilot reads `.github/copilot-instructions.md` to align inline code completions and chat responses with your project's technology stack and file conventions.
 * **Contextual Suggestions:** Helps Copilot autocomplete functions matching your project's naming conventions (e.g. repository pattern, clean code guidelines).
 * **Dependency Alignment:** Prevents Copilot from suggesting outdated package versions or incorrect API usages by declaring your active tech stack.
+
+---
+
+## 5. Git Tracking Strategies
+
+When compiling instruction files, you can manage how Git tracks these generated artifacts. AIM supports three strategies via the `"gitTracking"` setting in `.ai-context/config.json`:
+
+* **`track-all`** (Default): All generated files are tracked in Git. This ensures that teammates cloning the repo get the exact same compiled rules immediately.
+* **`ignore-all`**: All generated rule files (`CLAUDE.md`, `.cursorrules`, etc.) and agent command files are added to the project's `.gitignore` file under a managed block.
+* **`rules-only`**: Rule files are tracked in Git, but client-specific slash command files (like `.claude/commands/aim-*`) are ignored.
+
+`aim sync` automatically maintains a marked block in your `.gitignore` file:
+```plaintext
+# AIM generated (managed by `aim sync` — do not edit this block)
+.claude/commands/aim-*
+.cursor/rules/aim-*
+.windsurf/rules/aim-*
+# /AIM
+```
+
+---
+
+## 6. Target Agent Custom Slash Commands (`/aim-<skill>`)
+
+To let you execute specialist guidelines on demand, AIM can generate individual slash commands for each enabled skill in `.ai-context/config.json` (when `"skillCommands": true` is enabled).
+
+During `aim sync`, AIM compiles these rules specifically for the active runtimes:
+
+### 1. Claude Code
+Generates a markdown command file under `.claude/commands/aim-<skill>.md` for each skill. You can run `/aim-<skill> [arguments]` inside the Claude Code shell to feed those instructions to Claude.
+
+### 2. Cursor
+Generates Cursor Rule files under `.cursor/rules/aim-<skill>.mdc`. These rules can be manually toggled or configured to trigger automatically in Cursor's Composer or Chat.
+
+### 3. Windsurf
+Generates Windsurf Rule files under `.windsurf/rules/aim-<skill>.md`. They can be toggled manually inside the Windsurf IDE chat.
+
+### 4. Antigravity / Gemini Desktop
+Generates Gemini Desktop plugin directory structures inside your home directory:
+`~/.gemini/config/plugins/aim-skills/skills/aim-<skill>/SKILL.md` (backed by a `plugin.json` descriptor).
+This allows the Antigravity agent to dynamically discover the skill guidelines and follow them when executing tasks in your workspace.
+

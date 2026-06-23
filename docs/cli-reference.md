@@ -9,10 +9,23 @@ This document provides a comprehensive command-line reference for **AIM** (AI Me
 
 ### `aim init`
 Initialize AIM in the project root directory. Creates `.ai-context/` directory, default templates, specialist agents, and shims configuration files.
-* **Usage:** `aim init`
+
+When run in an interactive terminal (TTY), `aim init` prompts you to:
+1. Select which target AI agents to enable (using checkboxes).
+2. Choose a Git tracking strategy for generated files.
+3. Choose whether to enable `/aim-<skill>` slash commands for active agents.
+
+* **Usage:** `aim init [options]`
+* **Options:**
+  * `--agents <keys>`: Comma-separated list of target agent keys to enable (e.g., `claude,cursor,antigravity`).
+  * `--all-agents`: Enable all AI agents (non-interactive).
+  * `--no-commands`: Skip generating `/aim-<skill>` slash commands.
+  * `--git-track`: Track generated files in Git (default).
+  * `--git-ignore`: Add generated files to `.gitignore`.
+  * `--force`: Reinstall skills/agents even if they already exist (keeps a `.bak` backup).
 * **Example:**
   ```bash
-  aim init
+  aim init --all-agents --git-ignore
   ```
 
 ### `aim sync`
