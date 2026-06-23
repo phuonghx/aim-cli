@@ -502,7 +502,7 @@ def _collect_skills(root_dir):
                 items.append({
                     "type": "workflow",
                     "name": wf_name,
-                    "command_name": f"aim-workflow-{wf_name}",
+                    "command_name": f"aim-{wf_name}" if wf_name in ["init", "extract", "docs", "task"] else f"aim-workflow-{wf_name}",
                     "description": desc,
                     "rel_path": f".aim-agents/workflows/{fname}",
                 })

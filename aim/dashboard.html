@@ -39,26 +39,27 @@
     </script>
     <style>
         :root {
-            --bg: #09090b; /* Zinc 950 */
-            --surface: #18181b; /* Zinc 900 */
-            --surface-solid: #18181b;
-            --surface-hover: #27272a; /* Zinc 800 */
-            --border: #27272a; /* Zinc 800 */
-            --border-hover: #3f3f46; /* Zinc 700 */
+            --bg: #06060c; 
+            --surface: rgba(18, 18, 29, 0.55); 
+            --surface-solid: #0d0c15;
+            --surface-hover: rgba(30, 30, 46, 0.8); 
+            --border: rgba(255, 255, 255, 0.07); 
+            --border-hover: rgba(99, 102, 241, 0.4); 
             
-            --primary: #6366f1; /* Indigo 500 */
-            --primary-hover: #4f46e5; /* Indigo 600 */
-            --primary-glow: rgba(99, 102, 241, 0.08);
+            --primary: #6366f1; 
+            --primary-hover: #4f46e5; 
+            --primary-glow: rgba(99, 102, 241, 0.15);
             
-            --success: #10b981; /* Emerald 500 */
-            --success-glow: rgba(16, 185, 129, 0.08);
-            --warning: #f59e0b; /* Amber 500 */
-            --warning-glow: rgba(245, 158, 11, 0.08);
-            --danger: #ef4444; /* Red 500 */
-            --danger-glow: rgba(239, 68, 68, 0.08);
+            --success: #10b981; 
+            --success-glow: rgba(16, 185, 129, 0.12);
+            --warning: #f59e0b; 
+            --warning-glow: rgba(245, 158, 11, 0.12);
+            --danger: #ef4444; 
+            --danger-glow: rgba(239, 68, 68, 0.12);
             
-            --text: #fafafa; /* Zinc 50 */
-            --text-muted: #a1a1aa; /* Zinc 400 */
+            --text: #fafafa; 
+            --text-muted: #9ca3af; 
+            --card-glow: 0 0 20px rgba(99, 102, 241, 0.06);
         }
 
         * {
@@ -69,7 +70,8 @@
 
         body {
             font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg);
+            background: radial-gradient(ellipse at top, #11101d, #06060c);
+            background-attachment: fixed;
             color: var(--text);
             line-height: 1.5;
             overflow-x: hidden;
@@ -218,15 +220,18 @@
         /* 🔮 GENERAL PANEL */
         .glass-panel {
             background: var(--surface);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.25rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            transition: border-color 0.15s ease;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .glass-panel:hover {
             border-color: var(--border-hover);
+            box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 32px 0 rgba(0, 0, 0, 0.45), var(--card-glow);
         }
 
         /* 🔮 DASHBOARD LANDING */
@@ -234,11 +239,14 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: var(--surface);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(18, 18, 29, 0.6) 100%);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.5rem;
+            border-radius: 12px;
+            padding: 1.75rem;
             margin-bottom: 1.5rem;
+            box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 8px 32px 0 rgba(0, 0, 0, 0.2);
         }
 
         .hero-left h2 {
@@ -280,19 +288,22 @@
 
         .metric-card {
             background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.25rem;
+            border-radius: 12px;
+            padding: 1.5rem;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             min-height: 150px;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            transition: border-color 0.15s ease;
+            box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .metric-card:hover {
             border-color: var(--border-hover);
+            box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 8px 32px 0 rgba(0, 0, 0, 0.35), var(--card-glow);
         }
 
         .metric-header {
@@ -374,6 +385,11 @@
         @keyframes pulse {
             from { opacity: 0.5; }
             to { opacity: 1; }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         .tracker-live-counter {
@@ -1058,6 +1074,34 @@
             to { transform: translateY(0); opacity: 1; }
         }
 
+        #taskModalOverlay {
+            justify-content: flex-end;
+            align-items: stretch;
+            background-color: rgba(6, 6, 12, 0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        #taskModalOverlay .modal {
+            max-width: 650px;
+            height: 100dvh;
+            max-height: 100dvh;
+            border-radius: 0;
+            margin: 0;
+            border-left: 1px solid var(--border);
+            border-top: none;
+            border-bottom: none;
+            border-right: none;
+            animation: drawerSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            background: rgba(13, 12, 21, 0.93);
+            backdrop-filter: blur(20px);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+        }
+
+        @keyframes drawerSlide {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+
         .modal-header {
             padding: 1.25rem;
             border-bottom: 1px solid var(--border);
@@ -1174,6 +1218,7 @@
     <nav class="tabs">
         <button class="tab-btn active" id="tab-dashboard" onclick="switchTab('dashboard')"><i class="ph ph-chart-bar"></i> Dashboard</button>
         <button class="tab-btn" id="tab-tasks" onclick="switchTab('tasks')"><i class="ph ph-kanban"></i> Task Board</button>
+        <button class="tab-btn" id="tab-appbuilder" onclick="switchTab('appbuilder')"><i class="ph ph-wrench"></i> App Builder</button>
         <button class="tab-btn" id="tab-docs" onclick="switchTab('docs')"><i class="ph ph-book-open"></i> Docs</button>
         <button class="tab-btn" id="tab-memory" onclick="switchTab('memory')"><i class="ph ph-brain"></i> Memory</button>
         <button class="tab-btn" id="tab-users" onclick="switchTab('users')"><i class="ph ph-users"></i> Users</button>
@@ -1440,6 +1485,26 @@
                 <div id="healthFindings" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
             </div>
         </div>
+
+        <!-- 🛠️ APP BUILDER CONTENT -->
+        <div id="appbuilderContent" class="tab-content">
+            <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 1.5rem; align-items: start;">
+                <div class="glass-panel" style="display: flex; flex-direction: column; gap: 1rem; min-height: 600px;">
+                    <div style="border-bottom: 1px solid var(--border); padding-bottom: 0.75rem;">
+                        <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; color: #ffffff;">Starter Templates</h2>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Choose a professional starter template for your app. The engine will generate structural directory skeletons and link them to an AIM task tracking progress.</p>
+                    </div>
+                    <div id="templatesGridContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; overflow-y: auto; max-height: 520px; padding-right: 0.25rem;">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+                
+                <div class="form-panel" id="templateDetailPanel" style="min-height: 600px; display: flex; flex-direction: column; gap: 1rem; justify-content: center; align-items: center; text-align: center; color: var(--text-muted);">
+                    <i class="ph ph-wrench" style="font-size: 3rem; opacity: 0.4;"></i>
+                    <p>Select a starter template from the grid to customize variables and scaffold your project.</p>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- SEARCH MODAL (COMMAND PALETTE STYLE) -->
@@ -1535,7 +1600,8 @@
 
                 <div style="display: flex; flex-direction: column; gap: 0.35rem;">
                     <h3 class="modal-section-title">Description</h3>
-                    <textarea id="modalTaskDescInput" class="form-control" style="width: 100%; min-height: 80px; font-family: inherit; font-size: 0.9rem; line-height: 1.4; resize: vertical; background: rgba(0,0,0,0.3);" onchange="updateTaskDescription()" placeholder="Add a description..."></textarea>
+                    <div id="modalTaskDescPreview" class="markdown-body" style="cursor: pointer; min-height: 60px; padding: 0.75rem; background: rgba(0, 0, 0, 0.2); border-radius: 6px; border: 1px solid var(--border); transition: border-color 0.15s ease;" onclick="startEditingDescription()"></div>
+                    <textarea id="modalTaskDescInput" class="form-control" style="width: 100%; min-height: 80px; font-family: inherit; font-size: 0.9rem; line-height: 1.4; resize: vertical; background: rgba(0,0,0,0.3); display: none;" onblur="stopEditingDescription()" placeholder="Add a description..."></textarea>
                 </div>
                 
                 <div style="display: flex; gap: 2rem; margin-top: 1rem;">
@@ -1643,12 +1709,18 @@
         let ctx = null;
         let animationFrameId = null;
 
+        // Zoom and Pan variables
+        let zoomScale = 1.0;
+        let panOffset = { x: 0, y: 0 };
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+
         // Physics coefficients
-        const REPULSION = 1200; // force pushing nodes apart
-        const TENSION = 0.05;  // force pulling linked nodes together
-        const CENTER_ATTRACTION = 0.012; // force pulling nodes to center
-        const DAMPING = 0.82;  // friction
-        const NODE_RADIUS = 16;
+        const REPULSION = 5500; // force pushing nodes apart (increased from 1200)
+        const TENSION = 0.04;  // force pulling linked nodes together
+        const CENTER_ATTRACTION = 0.008; // force pulling nodes to center (decreased from 0.012)
+        const DAMPING = 0.85;  // friction
+        const NODE_RADIUS = 20; // larger nodes
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -1673,6 +1745,7 @@
             if (tabName === 'users') fetchUsers();
             if (tabName === 'graph') fetchGraphData();
             if (tabName === 'health') fetchDoctor();
+            if (tabName === 'appbuilder') fetchTemplates();
         }
 
         // --- SEARCH COMMAND PALETTE MODAL ---
@@ -2034,14 +2107,61 @@
         }
 
         function setupCanvasListeners() {
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+
+                const zoomFactor = 1.08;
+                const newScale = e.deltaY < 0 ? zoomScale * zoomFactor : zoomScale / zoomFactor;
+                const boundedScale = Math.max(0.15, Math.min(newScale, 4.0));
+                
+                // Adjust pan to zoom towards mouse position
+                panOffset.x = screenX - (screenX - panOffset.x) * (boundedScale / zoomScale);
+                panOffset.y = screenY - (screenY - panOffset.y) * (boundedScale / zoomScale);
+                zoomScale = boundedScale;
+            }, { passive: false });
+
+            canvas.addEventListener('mousedown', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                
+                if (hoveredNode) {
+                    draggedNode = hoveredNode;
+                    isDragging = true;
+                    canvas.style.cursor = 'grabbing';
+                } else {
+                    isPanning = true;
+                    panStart.x = screenX;
+                    panStart.y = screenY;
+                    canvas.style.cursor = 'move';
+                }
+            });
+
             canvas.addEventListener('mousemove', (e) => {
                 const rect = canvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                
+                // Convert screen mouse to graph space
+                const mx = (screenX - panOffset.x) / zoomScale;
+                const my = (screenY - panOffset.y) / zoomScale;
                 
                 if (isDragging && draggedNode) {
                     draggedNode.x = mx;
                     draggedNode.y = my;
+                    return;
+                }
+                
+                if (isPanning) {
+                    const dx = screenX - panStart.x;
+                    const dy = screenY - panStart.y;
+                    panOffset.x += dx;
+                    panOffset.y += dy;
+                    panStart.x = screenX;
+                    panStart.y = screenY;
                     return;
                 }
                 
@@ -2060,30 +2180,23 @@
                 if (hoveredNode) {
                     canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
                     tooltip.style.display = 'block';
-                    tooltip.style.left = (mx + 15) + 'px';
-                    tooltip.style.top = (my + 15) + 'px';
+                    tooltip.style.left = (screenX + 15) + 'px';
+                    tooltip.style.top = (screenY + 15) + 'px';
                     if (hoveredNode.type === 'task') {
                         tooltip.innerHTML = `<strong>TASK-${esc(hoveredNode.rawId)}</strong> (${esc(hoveredNode.status.toUpperCase())})<br>${esc(hoveredNode.label)}`;
                     } else {
                         tooltip.innerHTML = `<strong>Doc:</strong> ${esc(hoveredNode.label)}<br>Path: @doc/${esc(hoveredNode.path)}`;
                     }
                 } else {
-                    canvas.style.cursor = 'default';
+                    canvas.style.cursor = isPanning ? 'move' : 'default';
                     tooltip.style.display = 'none';
-                }
-            });
-            
-            canvas.addEventListener('mousedown', (e) => {
-                if (hoveredNode) {
-                    draggedNode = hoveredNode;
-                    isDragging = true;
-                    canvas.style.cursor = 'grabbing';
                 }
             });
             
             window.addEventListener('mouseup', () => {
                 isDragging = false;
                 draggedNode = null;
+                isPanning = false;
                 if (canvas) canvas.style.cursor = hoveredNode ? 'grab' : 'default';
             });
             
@@ -2153,7 +2266,7 @@
                 }
             }
             
-            // 3. Center gravity & boundary checks
+            // 3. Center gravity & boundary checks (expanded coordinate space)
             for (let n of graphNodes) {
                 if (n === draggedNode) continue;
                 
@@ -2165,15 +2278,19 @@
                 n.x += n.vx;
                 n.y += n.vy;
                 
-                n.x = Math.max(n.radius + 15, Math.min(width - n.radius - 15, n.x));
-                n.y = Math.max(n.radius + 15, Math.min(height - n.radius - 15, n.y));
+                n.x = Math.max(-1500, Math.min(width + 1500, n.x));
+                n.y = Math.max(-1500, Math.min(height + 1500, n.y));
             }
             
-            // 4. Render
+            // 4. Render with Zoom/Pan transformation
             ctx.clearRect(0, 0, width, height);
             
+            ctx.save();
+            ctx.translate(panOffset.x, panOffset.y);
+            ctx.scale(zoomScale, zoomScale);
+            
             // Draw connections
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.5 / zoomScale;
             for (let link of graphLinks) {
                 const isHighlighted = hoveredNode && (link.source === hoveredNode || link.target === hoveredNode);
                 ctx.strokeStyle = isHighlighted ? 'rgba(99, 102, 241, 0.8)' : 'rgba(255, 255, 255, 0.08)';
@@ -2205,7 +2322,7 @@
                 ctx.fill();
                 
                 ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.2)';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2 / zoomScale;
                 ctx.stroke();
                 
                 // Labels
@@ -2218,6 +2335,8 @@
                 const text = n.type === 'task' ? `TASK-${n.rawId}` : n.label;
                 ctx.fillText(text, n.x, n.y + n.radius + 6);
             }
+            
+            ctx.restore();
             
             animationFrameId = requestAnimationFrame(updatePhysicsLoop);
         }
@@ -2712,7 +2831,21 @@
             activeTaskId = taskId;
             document.getElementById('modalTaskId').textContent = `TASK-${task.id}`;
             document.getElementById('modalTaskTitleInput').value = task.title;
-            document.getElementById('modalTaskDescInput').value = task.description || '';
+            
+            const desc = task.description || '';
+            const previewEl = document.getElementById('modalTaskDescPreview');
+            const inputEl = document.getElementById('modalTaskDescInput');
+            if (previewEl && inputEl) {
+                previewEl.style.display = 'block';
+                inputEl.style.display = 'none';
+                inputEl.value = desc;
+                if (desc.trim()) {
+                    previewEl.innerHTML = sanitizeMarkdown(desc);
+                } else {
+                    previewEl.innerHTML = '<span style="color: var(--text-muted); font-style: italic; font-size: 0.85rem;">Click to add a description...</span>';
+                }
+            }
+            
             document.getElementById('modalTaskStatusSelect').value = task.status;
             
             // Spec & Plan inputs
@@ -2982,9 +3115,35 @@
             await saveTaskEdit({ title: newTitle });
         }
 
-        async function updateTaskDescription() {
-            const newDesc = document.getElementById('modalTaskDescInput').value.trim();
-            await saveTaskEdit({ description: newDesc });
+        function startEditingDescription() {
+            const previewEl = document.getElementById('modalTaskDescPreview');
+            const inputEl = document.getElementById('modalTaskDescInput');
+            if (previewEl && inputEl) {
+                previewEl.style.display = 'none';
+                inputEl.style.display = 'block';
+                inputEl.focus();
+            }
+        }
+
+        async function stopEditingDescription() {
+            const previewEl = document.getElementById('modalTaskDescPreview');
+            const inputEl = document.getElementById('modalTaskDescInput');
+            if (!previewEl || !inputEl) return;
+            const newDesc = inputEl.value;
+            
+            previewEl.style.display = 'block';
+            inputEl.style.display = 'none';
+            
+            if (newDesc.trim()) {
+                previewEl.innerHTML = sanitizeMarkdown(newDesc);
+            } else {
+                previewEl.innerHTML = '<span style="color: var(--text-muted); font-style: italic; font-size: 0.85rem;">Click to add a description...</span>';
+            }
+            
+            const task = currentTasks.find(t => t.id === activeTaskId);
+            if (task && task.description !== newDesc) {
+                await saveTaskEdit({ description: newDesc });
+            }
         }
 
         async function updateTaskStatus() {
@@ -3180,6 +3339,175 @@
                 }
             });
         };
+
+        // --- APP BUILDER SECTION ---
+        let currentTemplates = [];
+        let selectedTemplate = null;
+
+        async function fetchTemplates() {
+            try {
+                let res = await fetch('/api/app-builder/templates');
+                currentTemplates = await res.json();
+                renderTemplatesGrid();
+            } catch (err) {
+                console.error("Failed to load app builder templates:", err);
+            }
+        }
+
+        function renderTemplatesGrid() {
+            const container = document.getElementById('templatesGridContainer');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            if (currentTemplates.length === 0) {
+                container.innerHTML = '<div style="color:var(--text-muted); padding:2rem 0; text-align:center;">No templates found under aim/templates/aim-agents/skills/app-builder/templates/</div>';
+                return;
+            }
+            
+            currentTemplates.forEach(tpl => {
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                card.style.padding = '1rem';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '0.5rem';
+                
+                if (selectedTemplate && selectedTemplate.name === tpl.name) {
+                    card.style.borderColor = 'var(--primary)';
+                    card.style.backgroundColor = 'var(--surface-hover)';
+                }
+                
+                card.onclick = () => {
+                    selectedTemplate = tpl;
+                    renderTemplatesGrid(); // Re-render to update selected border highlight
+                    renderTemplateDetail(tpl);
+                };
+                
+                card.innerHTML = `
+                    <div style="font-weight:600; color:#ffffff; font-size:0.95rem; font-family:'Space Grotesk', sans-serif;">${esc(tpl.name)}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.35;">${esc(tpl.description)}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderTemplateDetail(tpl) {
+            const panel = document.getElementById('templateDetailPanel');
+            if (!panel) return;
+            
+            panel.innerHTML = '';
+            panel.removeAttribute('style'); // Clear center align & color styling for placeholder
+            panel.className = 'form-panel';
+            panel.style.minHeight = '600px';
+            
+            // Build markdown preview for TEMPLATE.md guidelines
+            const markdownSection = sanitizeMarkdown(tpl.content);
+            
+            panel.innerHTML = `
+                <h3 class="form-title" style="font-family:'Space Grotesk', sans-serif; font-size:1.1rem; color:#ffffff;">Configure Scaffolding: ${esc(tpl.name)}</h3>
+                
+                <div style="display:flex; flex-direction:column; gap:1.25rem; flex:1;">
+                    <div class="form-group">
+                        <label for="scaffoldProjectName" style="font-weight:600; font-size:0.78rem; color:var(--text-muted);">Project Name *</label>
+                        <input type="text" id="scaffoldProjectName" class="form-control" placeholder="e.g. ecommerce-backend" value="${esc(tpl.name)}" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="scaffoldDescription" style="font-weight:600; font-size:0.78rem; color:var(--text-muted);">Project Description</label>
+                        <textarea id="scaffoldDescription" class="form-control" rows="2" placeholder="Brief summary of the application...">${esc(tpl.description)}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="scaffoldDestination" style="font-weight:600; font-size:0.78rem; color:var(--text-muted);">Destination Folder (relative to workspace root)</label>
+                        <input type="text" id="scaffoldDestination" class="form-control" placeholder="e.g. apps/my-app (leave blank to use project name)">
+                    </div>
+                    
+                    <div style="display:flex; flex-direction:column; gap:0.35rem; flex:1;">
+                        <label style="font-weight:600; font-size:0.78rem; color:var(--text-muted); text-transform:uppercase;">Template Guidelines Preview</label>
+                        <div class="markdown-body" style="background:rgba(0,0,0,0.15); border:1px solid var(--border); border-radius:6px; padding:1rem; overflow-y:auto; max-height:220px; font-size:0.82rem;">
+                            ${markdownSection}
+                        </div>
+                    </div>
+                    
+                    <div id="scaffoldStatusContainer" style="display:none;"></div>
+                    
+                    <button class="btn btn-sync" id="btnScaffoldRun" onclick="runAppBuilder()" style="margin-top:auto; font-weight:600; font-family:'Space Grotesk', sans-serif;"><i class="ph ph-magic-wand"></i> Generate Project & Link Task</button>
+                </div>
+            `;
+        }
+
+        async function runAppBuilder() {
+            if (!selectedTemplate) return;
+            
+            const btn = document.getElementById('btnScaffoldRun');
+            const statusContainer = document.getElementById('scaffoldStatusContainer');
+            const projNameInput = document.getElementById('scaffoldProjectName');
+            const descInput = document.getElementById('scaffoldDescription');
+            const destInput = document.getElementById('scaffoldDestination');
+            
+            if (!projNameInput || !projNameInput.value.trim()) {
+                alert("Project Name is required!");
+                return;
+            }
+            
+            const payload = {
+                template_name: selectedTemplate.name,
+                project_name: projNameInput.value.trim(),
+                description: descInput ? descInput.value.trim() : "",
+                destination: destInput ? destInput.value.trim() : ""
+            };
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> Scaffolding...`;
+            }
+            
+            if (statusContainer) {
+                statusContainer.style.display = 'block';
+                statusContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.85rem;"><i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> Creating files and tasks...</span>';
+            }
+            
+            try {
+                let res = await fetch('/api/app-builder/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                let result = await res.json();
+                if (res.ok) {
+                    statusContainer.innerHTML = `
+                        <div style="background:var(--success-glow); border:1px solid rgba(16,185,129,0.3); border-radius:6px; padding:0.75rem; display:flex; flex-direction:column; gap:0.5rem; text-align:left; font-size:0.85rem;">
+                            <span style="color:var(--success); font-weight:600; display:inline-flex; align-items:center; gap:0.35rem;"><i class="ph ph-check-circle"></i> Scaffolding successfully generated!</span>
+                            <span style="color:var(--text-muted);">Folder created at relative path: <code>${esc(payload.destination || payload.project_name)}</code></span>
+                            <span style="color:var(--text-muted);">AIM task created to track implementation:</span>
+                            <button class="btn btn-secondary btn-sm" onclick="switchTab('tasks'); openTaskModal(${result.taskId});" style="align-self:flex-start; margin-top:0.25rem;"><i class="ph ph-kanban"></i> Open TASK-${result.taskId}</button>
+                        </div>
+                    `;
+                    // Fetch fresh list of tasks and update status metrics in background
+                    await fetchTasks();
+                    await fetchStatus();
+                } else {
+                    statusContainer.innerHTML = `
+                        <div style="background:var(--danger-glow); border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:0.75rem; text-align:left; font-size:0.85rem; color:#f87171;">
+                            <strong>Scaffolding Error:</strong> ${esc(result.error || "Failed to generate project")}
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                console.error("Scaffolding call failed:", err);
+                statusContainer.innerHTML = `
+                    <div style="background:var(--danger-glow); border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:0.75rem; text-align:left; font-size:0.85rem; color:#f87171;">
+                        <strong>Network/Server Error:</strong> ${esc(err.message)}
+                    </div>
+                `;
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="ph ph-magic-wand"></i> Generate Project & Link Task`;
+                }
+            }
+        }
     </script>
 </body>
 </html>

@@ -14,12 +14,12 @@ import datetime
 try:
     from aim.aim_cli import parse_task_file, write_task_file, create_task_file, next_task_id, \
         detect_parent_cycle, ensure_directories, get_project_root, configure_utf8_output, \
-        load_json, save_json
+        load_json, save_json, _is_within
     from aim.aim_cli import TASKS_DIR, DOCS_DIR, load_users, save_users
 except ImportError:
     from aim_cli import parse_task_file, write_task_file, create_task_file, next_task_id, \
         detect_parent_cycle, ensure_directories, get_project_root, configure_utf8_output, \
-        load_json, save_json
+        load_json, save_json, _is_within
     from aim_cli import TASKS_DIR, DOCS_DIR, load_users, save_users
 
 try:
@@ -188,6 +188,33 @@ class AIMBrowserHandler(http.server.BaseHTTPRequestHandler):
             query_params = urllib.parse.parse_qs(parsed_url.query)
             query = query_params.get("q", [""])[0].lower().strip()
             self.send_json(core.search_workspace(query, context=40))
+            return
+
+        # 5.15. App Builder Templates API
+        elif parsed_url.path == "/api/app-builder/templates":
+            templates = []
+            try:
+                base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "aim-agents", "skills", "app-builder", "templates")
+                if os.path.exists(base_dir):
+                    for name in sorted(os.listdir(base_dir)):
+                        t_dir = os.path.join(base_dir, name)
+                        if os.path.isdir(t_dir):
+                            tpl_file = os.path.join(t_dir, "TEMPLATE.md")
+                            if os.path.exists(tpl_file):
+                                with open(tpl_file, "r", encoding="utf-8") as f:
+                                    content = f.read()
+                                meta = {"name": name, "description": f"Template for {name}", "content": content}
+                                if content.startswith("---"):
+                                    parts = content.split("---", 2)
+                                    if len(parts) >= 3:
+                                        for line in parts[1].strip().splitlines():
+                                            if ":" in line:
+                                                k, _, v = line.partition(":")
+                                                meta[k.strip()] = v.strip().strip('"').strip("'")
+                                templates.append(meta)
+            except Exception as e:
+                print(f"[-] Error loading app builder templates: {e}")
+            self.send_json(templates)
             return
 
         # 5.5. Graph API
@@ -632,6 +659,73 @@ class AIMBrowserHandler(http.server.BaseHTTPRequestHandler):
                 print(f"[-] Error propagating rename in server for {err}")
 
             self.send_json({"success": True, "users": users})
+
+        # 9. Run App Builder Scaffolding API
+        elif self.path == "/api/app-builder/run":
+            template_name = payload.get("template_name", "").strip().lower()
+            project_name = payload.get("project_name", "").strip()
+            description = payload.get("description", "").strip()
+            destination = payload.get("destination", "").strip()
+            
+            if not template_name or not project_name:
+                self.send_json({"error": "Missing template_name or project_name"}, 400)
+                return
+                
+            try:
+                root_dir = get_project_root()
+                if destination:
+                    dest_path = os.path.normpath(os.path.join(root_dir, destination))
+                else:
+                    dest_path = os.path.normpath(os.path.join(root_dir, project_name))
+                    
+                if not _is_within(root_dir, dest_path):
+                    self.send_json({"error": "Refusing to write outside workspace directory"}, 400)
+                    return
+                    
+                if not os.path.exists(dest_path):
+                    os.makedirs(dest_path)
+                    
+                base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "aim-agents", "skills", "app-builder", "templates")
+                tpl_file = os.path.join(base_dir, template_name, "TEMPLATE.md")
+                template_content = ""
+                if os.path.exists(tpl_file):
+                    with open(tpl_file, "r", encoding="utf-8") as f:
+                        template_content = f.read()
+                        
+                task_title = f"Scaffold project: {project_name} ({template_name})"
+                task_desc = f"Use template `{template_name}` to scaffold and implement project `{project_name}` at `{os.path.relpath(dest_path, root_dir)}`.\n\n### Specifications & Guidelines:\n\n{template_content}"
+                
+                from aim.aim_cli import next_task_id, create_task_file
+                task_id = next_task_id()
+                task_meta = {
+                    "id": task_id,
+                    "title": task_title,
+                    "status": "todo",
+                    "priority": "high",
+                    "assignee": "unassigned",
+                    "parent": None,
+                    "dependsOn": [],
+                    "labels": ["scaffolding", template_name],
+                    "spec": "",
+                    "plan": "",
+                    "description": task_desc,
+                    "ac": [
+                        {"index": 1, "checked": False, "text": f"Scaffold folder structure at {os.path.relpath(dest_path, root_dir)}"},
+                        {"index": 2, "checked": False, "text": "Configure dev server and start preview"},
+                        {"index": 3, "checked": False, "text": "Implement core UI components and styling"},
+                        {"index": 4, "checked": False, "text": "Run verification tests and verify build"}
+                    ]
+                }
+                create_task_file(task_meta)
+                
+                readme_path = os.path.join(dest_path, "README.md")
+                if not os.path.exists(readme_path):
+                    with open(readme_path, "w", encoding="utf-8") as f:
+                        f.write(f"# {project_name}\n\n{description}\n\nGenerated using AIM App Builder template: `{template_name}`.\n\nRefer to task `@task-{task_id}` for checklist and progress.\n")
+                
+                self.send_json({"success": True, "taskId": task_id, "task": task_meta})
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
 
         else:
             self.send_error(404, "Not Found")

@@ -73,3 +73,15 @@ How App Builder responds:
 5. Surface progress along the way
 6. Boot the preview
 ```
+
+---
+
+## Visual Dashboard Integration
+
+The App Builder can be run visually via the **App Builder Tab** in the AIM Control Hub Dashboard.
+
+1. Navigate to the App Builder tab in the browser dashboard.
+2. Select one of the 13 starter templates from the grid.
+3. Configure target project name, description, and destination path.
+4. Click **Generate Project & Link Task** to scaffold the folder structure and automatically create an AIM task linked to the project setup.
+5. Use the `/aim-task` and `/aim-docs` slash commands inside chat, or the dashboard Task Board, to track and implement the generated project checklist.
